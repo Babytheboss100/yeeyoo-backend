@@ -18,6 +18,7 @@ const PORT = process.env.PORT || 3001
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(helmet())
 app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true }))
+app.set('trust proxy', 1)
 
 // Webhook trenger raw body — må være FØR express.json()
 app.use('/api/billing/webhook', express.raw({ type: 'application/json' }))
