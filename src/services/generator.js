@@ -83,7 +83,9 @@ async function generateDeepSeek({ system, user, apiKey }) {
   })
   if (!r.ok) { const e=await r.json(); throw new Error(e.error?.message||'DeepSeek feil') }
   const d = await r.json(); return d.choices[0].message.content
-}({ project, templateId, customPrompt, platform, extraContext, aiModels, keys }) {
+}
+
+export async function generateContent({ project, templateId, customPrompt, platform, extraContext, aiModels, keys }) {
   const { system, user } = buildPrompts({ project, templateId, customPrompt, platform, extraContext })
   const tasks = aiModels.map(async modelId => {
     const apiKey = keys[modelId]
