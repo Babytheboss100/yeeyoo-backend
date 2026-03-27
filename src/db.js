@@ -10,6 +10,14 @@ export const pool = new Pool({
 
 export async function initDB() {
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS subscriptions (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID REFERENCES users(id) ON DELETE CASCADE UNIQUE,
@@ -19,14 +27,6 @@ export async function initDB() {
       status TEXT DEFAULT 'active',
       current_period_end TIMESTAMPTZ,
       updated_at TIMESTAMPTZ DEFAULT NOW()
-    );
-
-    CREATE TABLE IF NOT EXISTS users (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      name TEXT NOT NULL,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS projects (
@@ -48,6 +48,7 @@ export async function initDB() {
       project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
       platform TEXT NOT NULL,
       content TEXT NOT NULL,
+      ai_model TEXT DEFAULT 'claude',
       hashtags TEXT DEFAULT '',
       status TEXT DEFAULT 'pending',
       scheduled_at TIMESTAMPTZ,
