@@ -12,9 +12,9 @@ export const PLANS = {
     id: 'free',
     name: 'Gratis',
     price: 0,
-    postsPerMonth: 10,
+    postsPerMonth: 999,
     projects: 1,
-    aiModels: ['claude'],
+    aiModels: ['claude', 'gpt4o', 'gemini', 'grok', 'deepseek'],
     platforms: 4
   },
   starter: {
