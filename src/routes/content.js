@@ -97,22 +97,14 @@ r.post('/generate', async (req, res) => {
 })
 
 
-// POST generate image with DALL-E 3
+// POST generate image with Pollinations.ai (gratis)
 r.post('/generate-image', async (req, res) => {
   const { text } = req.body
   if (!text) return res.status(400).json({ error: 'Mangler tekst' })
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) return res.status(500).json({ error: 'OPENAI_API_KEY mangler' })
   try {
-    const prompt = `Create a professional social media image for this post. Style: modern, clean, corporate. No text in image. Context: ${text.substring(0, 200)}`
-    const r2 = await fetch('https://api.openai.com/v1/images/generations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: 'dall-e-3', prompt, n: 1, size: '1024x1024', quality: 'standard' })
-    })
-    if (!r2.ok) { const e = await r2.json(); throw new Error(e.error?.message || 'DALL-E feil') }
-    const data = await r2.json()
-    res.json({ url: data.data[0].url })
+    const prompt = encodeURIComponent('Professional social media image, modern clean corporate style, no text: ' + text.substring(0, 200))
+    const url = `https://image.pollinations.ai/prompt/${prompt}?width=1024&height=1024&nologo=true`
+    res.json({ url })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
