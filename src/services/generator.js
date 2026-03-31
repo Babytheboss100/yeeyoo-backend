@@ -57,7 +57,7 @@ async function generateGPT4o({ system, user, apiKey }) {
 }
 
 async function generateGemini({ system, user, apiKey }) {
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`, {
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
     method:'POST',
     headers:{ 'Content-Type':'application/json' },
     body: JSON.stringify({ system_instruction:{parts:[{text:system}]}, contents:[{parts:[{text:user}]}], generationConfig:{maxOutputTokens:1000} })
