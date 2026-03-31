@@ -11,7 +11,14 @@ const PLATFORM_RULES = {
   linkedin:  { maxChars:3000, style:'Profesjonell men personlig. Sterk hook. Linjeskift. CTA. Hashtags på slutten.', format:'Hook\n\nKropp (3-5 avsnitt)\n\nCTA\n\n#hashtags' },
   facebook:  { maxChars:2000, style:'Engasjerende og konversasjonell. Kortere avsnitt. Still et spørsmål.', format:'Hook → Kropp → Spørsmål/CTA' },
   instagram: { maxChars:2200, style:'Visuelt og inspirerende. Første linje avgjørende. Moderate emojis. Mange hashtags.', format:'Sterk første linje\n\nKort kropp\n\n.\n.\n.\n#hashtags (15-20)' },
-  twitter:   { maxChars:280,  style:'Direkte og klar. Én sterk påstand. Maks 2 hashtags.', format:'Maks 280 tegn.' }
+  twitter:   { maxChars:280,  style:'Direkte og klar. Én sterk påstand. Maks 2 hashtags.', format:'Maks 280 tegn.' },
+  tiktok:    { maxChars:2200, style:'Energisk, underholdende og autentisk. Hook i første setning. Trendy språk. Emojis. Oppfordring til å følge/kommentere.', format:'Hook (første setning)
+
+Kort og fengende kropp
+
+CTA (følg, kommenter, del)
+
+#hashtags (5-10 trending)' }
 }
 
 export const TEMPLATES = [
