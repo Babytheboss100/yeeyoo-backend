@@ -122,6 +122,26 @@ export async function initDB() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
+    -- SEO profiles
+    CREATE TABLE IF NOT EXISTS seo_profiles (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      project_id UUID REFERENCES projects(id) ON DELETE CASCADE UNIQUE,
+      company_name TEXT NOT NULL,
+      company_offer TEXT DEFAULT '',
+      industry TEXT NOT NULL,
+      locations TEXT DEFAULT '',
+      target_customer TEXT DEFAULT '',
+      competitors TEXT DEFAULT '',
+      keywords JSONB DEFAULT '[]',
+      meta_title TEXT DEFAULT '',
+      meta_description TEXT DEFAULT '',
+      blog_ideas JSONB DEFAULT '[]',
+      action_checklist JSONB DEFAULT '[]',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
     -- Login tracking
     CREATE TABLE IF NOT EXISTS login_logs (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -13,6 +13,7 @@ import billingRoutes from './routes/billing.js'
 import teamRoutes from './routes/team.js'
 import notificationRoutes from './routes/notifications.js'
 import exportRoutes from './routes/export.js'
+import seoRoutes from './routes/seo.js'
 import { auth } from './middleware/auth.js'
 
 const app = express()
@@ -36,6 +37,7 @@ app.use('/api/billing', billingRoutes)
 app.use('/api/team', teamRoutes)
 app.use('/api/notifications', notificationRoutes)
 app.use('/api/export', exportRoutes)
+app.use('/api/seo', seoRoutes)
 
 // ─── Onboarding ───────────────────────────────────────────────────────────────
 app.get('/api/onboarding/status', auth, async (req, res) => {
