@@ -38,6 +38,12 @@ async function logLogin(user, req, method = 'email') {
 const INVITE_ONLY = process.env.INVITE_ONLY !== 'false' // default ON
 async function checkWhitelist(email) {
   if (!INVITE_ONLY) return true
+  // Admins bypass whitelist
+  const { rows: user } = await pool.query(
+    'SELECT is_admin FROM users WHERE LOWER(email)=LOWER($1)', [email]
+  )
+  if (user[0]?.is_admin) return true
+  // Check whitelist
   const { rows } = await pool.query(
     'SELECT approved FROM invite_whitelist WHERE LOWER(email)=LOWER($1)', [email]
   )
@@ -46,9 +52,11 @@ async function checkWhitelist(email) {
 
 // Helper: find or create user from OAuth provider
 async function findOrCreateOAuthUser({ sub, email, name, provider }) {
-  // Check whitelist for new OAuth users (existing users are allowed through)
-  const { rows: existing } = await pool.query('SELECT id FROM users WHERE email=$1', [email])
-  if (!existing[0] && !await checkWhitelist(email)) {
+  // Check whitelist for new OAuth users (existing users bypass if admin)
+  const { rows: existing } = await pool.query('SELECT id, is_admin FROM users WHERE email=$1', [email])
+  if (existing[0]) {
+    // Existing user — always allow (they're already in the system)
+  } else if (!await checkWhitelist(email)) {
     throw new Error('invite_only')
   }
 
@@ -136,7 +144,7 @@ r.post('/login', async (req, res) => {
 r.get('/me', auth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT id, name, email, auth_provider, created_at FROM users WHERE id=$1', [req.user.id]
+      'SELECT id, name, email, auth_provider, is_admin, created_at FROM users WHERE id=$1', [req.user.id]
     )
     if (!rows[0]) return res.status(404).json({ error: 'Bruker ikke funnet' })
     res.json(rows[0])

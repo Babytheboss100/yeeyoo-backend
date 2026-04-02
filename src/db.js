@@ -110,6 +110,9 @@ export async function initDB() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_token TEXT;
 
+    -- Admin flag
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false;
+
     -- Invite whitelist (closed beta)
     CREATE TABLE IF NOT EXISTS invite_whitelist (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

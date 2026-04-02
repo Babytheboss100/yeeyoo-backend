@@ -62,6 +62,42 @@ app.post('/api/onboarding/complete', auth, async (req, res) => {
   }
 })
 
+// ─── Admin: Users ─────────────────────────────────────────────────────────────
+app.get('/api/admin/users', auth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, name, email, auth_provider, is_admin, email_verified, created_at FROM users ORDER BY created_at DESC'
+    )
+    res.json(rows)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// Set admin flag (only first user / existing admin can do this)
+app.post('/api/admin/set-admin', auth, async (req, res) => {
+  try {
+    // Check caller is admin or first user
+    const { rows: caller } = await pool.query('SELECT is_admin FROM users WHERE id=$1', [req.user.id])
+    const { rows: first } = await pool.query('SELECT id FROM users ORDER BY created_at LIMIT 1')
+    if (!caller[0]?.is_admin && req.user.id !== first[0]?.id) {
+      return res.status(403).json({ error: 'Kun admin' })
+    }
+
+    const { email, isAdmin } = req.body
+    if (!email) return res.status(400).json({ error: 'E-post mangler' })
+
+    const { rows } = await pool.query(
+      'UPDATE users SET is_admin=$1 WHERE LOWER(email)=LOWER($2) RETURNING id, email, is_admin',
+      [isAdmin !== false, email]
+    )
+    if (!rows[0]) return res.status(404).json({ error: 'Bruker ikke funnet' })
+    res.json(rows[0])
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // ─── Admin: Login logs ────────────────────────────────────────────────────────
 app.get('/api/admin/logins', auth, async (req, res) => {
   try {
