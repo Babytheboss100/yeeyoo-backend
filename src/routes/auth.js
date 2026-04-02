@@ -356,14 +356,17 @@ r.get('/providers', (req, res) => {
 
 // ─── BETA SIGNUP (public — no auth needed) ───────────────────────────────────
 r.post('/request-access', async (req, res) => {
-  const { email } = req.body
+  const { email, message } = req.body
   if (!email) return res.status(400).json({ error: 'E-post mangler' })
   try {
+    const note = message
+      ? `Beta-søknad: ${message.substring(0, 500)}`
+      : 'Søkt via beta-skjema (ingen melding)'
     await pool.query(
       `INSERT INTO invite_whitelist (email, approved, note)
-       VALUES (LOWER($1), false, 'Søkt via beta-skjema')
-       ON CONFLICT (email) DO NOTHING`,
-      [email]
+       VALUES (LOWER($1), false, $2)
+       ON CONFLICT (email) DO UPDATE SET note=$2`,
+      [email, note]
     )
     res.json({ message: 'Takk! Vi sender deg en invitasjon når plassen din er klar.' })
   } catch (e) {
