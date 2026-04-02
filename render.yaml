@@ -1,18 +1,60 @@
 services:
   - type: web
-    name: geirx-backend
-    env: node
+    name: yeeyoo-backend
+    runtime: node
     region: frankfurt
-    plan: free
+    plan: starter
     buildCommand: npm install
     startCommand: node src/index.js
+    healthCheckPath: /health
+    autoDeploy: true
+
     envVars:
+      # Server
       - key: NODE_ENV
         value: production
       - key: FRONTEND_URL
-        sync: false
+        value: https://app.yeeyoo.no
+      - key: BACKEND_URL
+        value: https://yeeyoo-backend.onrender.com
+
+      # Database (auto-linked)
+      - key: DATABASE_URL
+        fromDatabase:
+          name: yeeyoo-db
+          property: connectionString
+
+      # Auth
       - key: JWT_SECRET
         generateValue: true
+
+      # Google OAuth2
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        value: https://yeeyoo-backend.onrender.com/api/auth/google/callback
+
+      # Vipps Login
+      - key: VIPPS_CLIENT_ID
+        sync: false
+      - key: VIPPS_CLIENT_SECRET
+        sync: false
+      - key: VIPPS_SUBSCRIPTION_KEY
+        sync: false
+      - key: VIPPS_MSN
+        sync: false
+      - key: VIPPS_REDIRECT_URI
+        value: https://yeeyoo-backend.onrender.com/api/auth/vipps/callback
+
+      # Email (SendGrid)
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: SENDGRID_FROM_EMAIL
+        value: no-reply@yeeyoo.no
+
+      # AI Models
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: OPENAI_API_KEY
@@ -23,6 +65,8 @@ services:
         sync: false
       - key: DEEPSEEK_API_KEY
         sync: false
+
+      # Stripe
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
@@ -33,12 +77,22 @@ services:
         sync: false
       - key: STRIPE_PRICE_BEDRIFT
         sync: false
-      - key: DATABASE_URL
-        fromDatabase:
-          name: geirx-db
-          property: connectionString
+
+      # Social OAuth (publishing)
+      - key: LINKEDIN_CLIENT_ID
+        sync: false
+      - key: LINKEDIN_CLIENT_SECRET
+        sync: false
+      - key: META_APP_ID
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: TWITTER_CLIENT_ID
+        sync: false
+      - key: TWITTER_CLIENT_SECRET
+        sync: false
 
 databases:
-  - name: geirx-db
+  - name: yeeyoo-db
     region: frankfurt
-    plan: free
+    plan: starter
