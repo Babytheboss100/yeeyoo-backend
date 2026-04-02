@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken'
 import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
+import { sendVerificationEmail } from '../services/email.js'
 
 const r = Router()
 
@@ -42,11 +43,19 @@ r.post('/register', async (req, res) => {
   if (!name || !email || !password) return res.status(400).json({ error: 'Mangler felt' })
   try {
     const hash = await bcrypt.hash(password, 10)
+    const verifyToken = crypto.randomBytes(32).toString('hex')
     const { rows } = await pool.query(
-      'INSERT INTO users (name, email, password_hash, auth_provider) VALUES ($1,$2,$3,$4) RETURNING id, name, email',
-      [name, email, hash, 'email']
+      `INSERT INTO users (name, email, password_hash, auth_provider, email_verified, verify_token)
+       VALUES ($1,$2,$3,'email',false,$4) RETURNING id, name, email`,
+      [name, email, hash, verifyToken]
     )
-    res.json({ token: signToken(rows[0]), user: rows[0] })
+    // Send verification email (non-blocking)
+    sendVerificationEmail(email, name, verifyToken)
+    res.status(201).json({
+      needsVerification: true,
+      message: 'Sjekk e-posten din for å aktivere kontoen.',
+      user: rows[0]
+    })
   } catch (e) {
     if (e.code === '23505') return res.status(400).json({ error: 'E-post allerede i bruk' })
     res.status(500).json({ error: e.message })
@@ -64,6 +73,14 @@ r.post('/login', async (req, res) => {
     }
     const ok = await bcrypt.compare(password, rows[0].password_hash)
     if (!ok) return res.status(401).json({ error: 'Feil e-post eller passord' })
+    // Block unverified email users
+    if (rows[0].auth_provider === 'email' && rows[0].email_verified === false) {
+      return res.status(403).json({
+        error: 'E-posten din er ikke bekreftet. Sjekk innboksen din.',
+        needsVerification: true,
+        email: rows[0].email
+      })
+    }
     res.json({ token: signToken(rows[0]), user: { id: rows[0].id, name: rows[0].name, email: rows[0].email } })
   } catch (e) {
     res.status(500).json({ error: e.message })
@@ -77,6 +94,51 @@ r.get('/me', auth, async (req, res) => {
     )
     if (!rows[0]) return res.status(404).json({ error: 'Bruker ikke funnet' })
     res.json(rows[0])
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ─── EMAIL VERIFICATION ───────────────────────────────────────────────────────
+
+// GET /auth/verify?token=xxx — verify email from link in mail
+r.get('/verify', async (req, res) => {
+  const { token } = req.query
+  const frontend = process.env.FRONTEND_URL || 'https://app.yeeyoo.no'
+  if (!token) return res.redirect(`${frontend}?error=missing_token`)
+
+  try {
+    const { rows } = await pool.query('SELECT * FROM users WHERE verify_token=$1', [token])
+    if (!rows[0]) return res.redirect(`${frontend}?error=invalid_token`)
+
+    await pool.query(
+      'UPDATE users SET email_verified=true, verify_token=NULL WHERE id=$1',
+      [rows[0].id]
+    )
+
+    // Auto-login: generate JWT and redirect
+    const jwt_token = signToken(rows[0])
+    res.redirect(`${frontend}?oauth_token=${jwt_token}&verified=true`)
+  } catch (e) {
+    console.error('Verify error:', e)
+    res.redirect(`${frontend}?error=verify_failed`)
+  }
+})
+
+// POST /auth/resend-verification — resend verification email
+r.post('/resend-verification', async (req, res) => {
+  const { email } = req.body
+  if (!email) return res.status(400).json({ error: 'E-post mangler' })
+
+  try {
+    const { rows } = await pool.query('SELECT * FROM users WHERE email=$1', [email])
+    if (!rows[0]) return res.json({ message: 'Hvis kontoen finnes, er e-post sendt.' })
+    if (rows[0].email_verified) return res.json({ message: 'E-post allerede bekreftet.' })
+
+    const verifyToken = crypto.randomBytes(32).toString('hex')
+    await pool.query('UPDATE users SET verify_token=$1 WHERE id=$2', [verifyToken, rows[0].id])
+    sendVerificationEmail(email, rows[0].name, verifyToken)
+    res.json({ message: 'Verifiseringsmail sendt. Sjekk innboksen din.' })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }

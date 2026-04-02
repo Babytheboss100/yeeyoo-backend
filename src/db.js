@@ -105,6 +105,10 @@ export async function initDB() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider TEXT DEFAULT 'email';
     DO $$ BEGIN ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+
+    -- Email verification
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_token TEXT;
   `)
   console.log('✅ DB ready')
 }
