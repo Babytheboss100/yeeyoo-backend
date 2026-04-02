@@ -92,12 +92,27 @@ r.get('/usage', auth, async (req, res) => {
   }
 })
 
-// ─── GET /billing/debug — check which plans have price IDs ───────────────────
-r.get('/debug', (req, res) => {
+// ─── GET /billing/debug — check full Stripe config ───────────────────────────
+r.get('/debug', async (req, res) => {
+  let stripeOk = false
+  let stripeErr = null
+  try {
+    // Test Stripe connection by listing 1 product
+    await stripe.products.list({ limit: 1 })
+    stripeOk = true
+  } catch (e) {
+    stripeErr = e.message
+  }
   res.json({
-    stripe_configured: Boolean(process.env.STRIPE_SECRET_KEY),
+    stripe_key_set: Boolean(process.env.STRIPE_SECRET_KEY),
+    stripe_key_prefix: process.env.STRIPE_SECRET_KEY?.substring(0, 12) + '...',
+    stripe_connection: stripeOk ? 'OK' : 'FAILED: ' + stripeErr,
+    frontend_url: process.env.FRONTEND_URL || 'NOT SET',
+    webhook_secret: process.env.STRIPE_WEBHOOK_SECRET ? 'SET' : 'MISSING',
     plans: Object.entries(PLANS).map(([k, v]) => ({
-      id: k, name: v.name, priceId: v.priceId ? 'SET' : 'MISSING'
+      id: k, name: v.name, price: v.price,
+      priceId: v.priceId || 'MISSING',
+      priceIdEnvVar: `STRIPE_PRICE_${k.toUpperCase()}`
     }))
   })
 })
