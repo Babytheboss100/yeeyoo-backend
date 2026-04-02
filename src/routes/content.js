@@ -130,6 +130,28 @@ r.get('/posts', async (req, res) => {
   res.json(rows)
 })
 
+// GET calendar posts for a given month
+r.get('/calendar', async (req, res) => {
+  const year = parseInt(req.query.year) || new Date().getFullYear()
+  const month = parseInt(req.query.month) || (new Date().getMonth() + 1)
+  const startDate = new Date(year, month - 1, 1)
+  const endDate = new Date(year, month, 0, 23, 59, 59)
+  try {
+    const { rows } = await pool.query(`
+      SELECT p.*, pr.name as project_name, pr.color as project_color,
+        COALESCE(p.scheduled_at, p.created_at) as calendar_date
+      FROM posts p
+      LEFT JOIN projects pr ON p.project_id = pr.id
+      WHERE p.user_id = $1
+        AND COALESCE(p.scheduled_at, p.created_at) BETWEEN $2 AND $3
+      ORDER BY COALESCE(p.scheduled_at, p.created_at) ASC
+    `, [req.user.id, startDate, endDate])
+    res.json(rows)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // PATCH update post (edit content or change status)
 r.patch('/posts/:id', async (req, res) => {
   const { content, status, scheduled_at } = req.body
