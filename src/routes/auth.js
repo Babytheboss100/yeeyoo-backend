@@ -9,7 +9,30 @@ import { sendVerificationEmail } from '../services/email.js'
 const r = Router()
 
 const signToken = (user) =>
-  jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '30d' })
+  jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '7d' })
+
+// Log login to database
+async function logLogin(user, req, method = 'email') {
+  try {
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || 'unknown'
+    const ua = req.headers['user-agent'] || 'unknown'
+
+    // Get country from IP using free API (non-blocking)
+    let country = null
+    try {
+      const geo = await fetch(`https://ipapi.co/${ip}/country_name/`, { signal: AbortSignal.timeout(3000) })
+      if (geo.ok) country = await geo.text()
+      if (country?.includes('<')) country = null // HTML error page
+    } catch {}
+
+    await pool.query(
+      'INSERT INTO login_logs (user_id, email, ip_address, user_agent, country, method) VALUES ($1,$2,$3,$4,$5,$6)',
+      [user.id, user.email, ip, ua.substring(0, 500), country, method]
+    )
+  } catch (e) {
+    console.error('Login log failed:', e.message)
+  }
+}
 
 // Helper: find or create user from OAuth provider
 async function findOrCreateOAuthUser({ sub, email, name, provider }) {
@@ -81,6 +104,7 @@ r.post('/login', async (req, res) => {
         email: rows[0].email
       })
     }
+    logLogin(rows[0], req, 'email')
     res.json({ token: signToken(rows[0]), user: { id: rows[0].id, name: rows[0].name, email: rows[0].email } })
   } catch (e) {
     res.status(500).json({ error: e.message })
@@ -117,6 +141,7 @@ r.get('/verify', async (req, res) => {
     )
 
     // Auto-login: generate JWT and redirect
+    logLogin(rows[0], req, 'email-verify')
     const jwt_token = signToken(rows[0])
     res.redirect(`${frontend}?oauth_token=${jwt_token}&verified=true`)
   } catch (e) {
@@ -215,6 +240,7 @@ r.get('/vipps/callback', async (req, res) => {
       provider: 'vipps',
     })
 
+    logLogin(user, req, 'vipps')
     res.redirect(`${frontend}?oauth_token=${signToken(user)}&oauth_name=${encodeURIComponent(user.name)}`)
   } catch (e) {
     console.error('Vipps error:', e)
@@ -281,6 +307,7 @@ r.get('/google/callback', async (req, res) => {
       provider: 'google',
     })
 
+    logLogin(user, req, 'google')
     res.redirect(`${frontend}?oauth_token=${signToken(user)}&oauth_name=${encodeURIComponent(user.name)}`)
   } catch (e) {
     console.error('Google error:', e)

@@ -109,6 +109,18 @@ export async function initDB() {
     -- Email verification
     ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_token TEXT;
+
+    -- Login tracking
+    CREATE TABLE IF NOT EXISTS login_logs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      email TEXT NOT NULL,
+      ip_address TEXT,
+      user_agent TEXT,
+      country TEXT,
+      method TEXT DEFAULT 'email',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
   `)
   console.log('✅ DB ready')
 }

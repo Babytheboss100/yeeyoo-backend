@@ -62,7 +62,48 @@ app.post('/api/onboarding/complete', auth, async (req, res) => {
   }
 })
 
-app.get('/health', (_, res) => res.json({ status: 'ok', version: '6.0.0' }))
+// ─── Admin: Login logs ────────────────────────────────────────────────────────
+app.get('/api/admin/logins', auth, async (req, res) => {
+  try {
+    // Check admin
+    const { rows: u } = await pool.query('SELECT * FROM users WHERE id=$1', [req.user.id])
+    // Allow first user or admin role
+    const { rows: firstUser } = await pool.query('SELECT id FROM users ORDER BY created_at LIMIT 1')
+    if (u[0]?.id !== firstUser[0]?.id) return res.status(403).json({ error: 'Admin only' })
+
+    const { limit = 100, offset = 0 } = req.query
+    const { rows } = await pool.query(
+      'SELECT * FROM login_logs ORDER BY created_at DESC LIMIT $1 OFFSET $2',
+      [parseInt(limit), parseInt(offset)]
+    )
+    const { rows: total } = await pool.query('SELECT COUNT(*) as count FROM login_logs')
+    res.json({ logins: rows, total: parseInt(total[0].count) })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+app.get('/api/admin/login-stats', auth, async (req, res) => {
+  try {
+    const [byMethod, byCountry, byDay, recent] = await Promise.all([
+      pool.query('SELECT method, COUNT(*) as count FROM login_logs GROUP BY method ORDER BY count DESC'),
+      pool.query('SELECT country, COUNT(*) as count FROM login_logs WHERE country IS NOT NULL GROUP BY country ORDER BY count DESC LIMIT 20'),
+      pool.query(`SELECT DATE(created_at) as day, COUNT(*) as count FROM login_logs
+        WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY DATE(created_at) ORDER BY day`),
+      pool.query('SELECT * FROM login_logs ORDER BY created_at DESC LIMIT 10'),
+    ])
+    res.json({
+      byMethod: byMethod.rows,
+      byCountry: byCountry.rows,
+      byDay: byDay.rows,
+      recent: recent.rows,
+    })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+app.get('/health', (_, res) => res.json({ status: 'ok', version: '7.0.0' }))
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 initDB().then(() => {
