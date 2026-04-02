@@ -92,11 +92,26 @@ r.get('/usage', auth, async (req, res) => {
   }
 })
 
+// ─── GET /billing/debug — check which plans have price IDs ───────────────────
+r.get('/debug', (req, res) => {
+  res.json({
+    stripe_configured: Boolean(process.env.STRIPE_SECRET_KEY),
+    plans: Object.entries(PLANS).map(([k, v]) => ({
+      id: k, name: v.name, priceId: v.priceId ? 'SET' : 'MISSING'
+    }))
+  })
+})
+
 // ─── POST /billing/checkout — opprett Stripe checkout session ─────────────────
 r.post('/checkout', auth, async (req, res) => {
   const { planId } = req.body
   const plan = PLANS[planId]
-  if (!plan || !plan.priceId) return res.status(400).json({ error: 'Ugyldig plan' })
+  if (!plan || !plan.priceId) {
+    return res.status(400).json({
+      error: `Plan "${planId}" mangler pris-ID. Sett STRIPE_PRICE_${planId.toUpperCase()} i Render env vars.`,
+      configured: Object.entries(PLANS).map(([k,v]) => ({ plan: k, hasPrice: Boolean(v.priceId) }))
+    })
+  }
 
   try {
     const { rows } = await pool.query('SELECT * FROM users WHERE id=$1', [req.user.id])
