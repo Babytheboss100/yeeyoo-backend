@@ -113,34 +113,31 @@ export async function generateContent({ project, templateId, customPrompt, platf
  * Uses AI to create a focused image prompt, then Pollinations.ai for generation.
  */
 export function generateImagePrompt(text, project) {
-  // Extract key themes from the text
-  const content = text.substring(0, 300)
+  const content = text.substring(0, 200)
 
-  // Build a specific, content-aware image prompt
-  const businessContext = project?.name ? `for ${project.name}` : ''
-  const industry = project?.about ? `, industry: ${project.about.substring(0, 50)}` : ''
-
-  // Analyze content to determine image style
+  // Detect theme from content
   const isProduct = /lanser|produkt|nyhet|launch|product/i.test(content)
   const isTeam = /team|ansatt|medarbeider|kolleg/i.test(content)
   const isData = /resultat|vekst|tall|prosent|growth|data/i.test(content)
   const isEvent = /event|konferanse|webinar|møte/i.test(content)
   const isNature = /miljø|bærekraft|grønn|natur|sustain/i.test(content)
 
-  let style = 'modern professional business photography'
-  if (isProduct) style = 'sleek product showcase, studio lighting, minimalist background'
-  else if (isTeam) style = 'diverse professional team collaborating in modern office'
-  else if (isData) style = 'clean data visualization, business dashboard, growth charts'
-  else if (isEvent) style = 'professional conference or networking event atmosphere'
-  else if (isNature) style = 'sustainable business, green technology, eco-friendly'
+  let style = 'modern business office professional photography'
+  if (isProduct) style = 'product showcase minimalist studio lighting'
+  else if (isTeam) style = 'diverse team modern office collaboration'
+  else if (isData) style = 'business dashboard data visualization growth'
+  else if (isEvent) style = 'professional conference networking event'
+  else if (isNature) style = 'sustainable green technology nature'
 
-  // Extract key nouns/topics for specificity
+  // Extract 3 short keywords only (letters and spaces)
   const keywords = content
-    .replace(/[#@\n]/g, ' ')
+    .replace(/[^a-zA-ZæøåÆØÅ\s]/g, '')
     .split(/\s+/)
-    .filter(w => w.length > 4)
-    .slice(0, 5)
-    .join(', ')
+    .filter(w => w.length > 3 && w.length < 15)
+    .slice(0, 3)
+    .join(' ')
 
-  return `${style} ${businessContext}${industry}. Visual theme: ${keywords}. High quality, photorealistic, no text overlays, no watermarks, professional lighting, 16:9 aspect ratio`
+  // Keep prompt SHORT — Pollinations fails on long URLs
+  const short = `${style} ${keywords} photorealistic no text`.substring(0, 150)
+  return short
 }

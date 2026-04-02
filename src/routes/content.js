@@ -121,9 +121,16 @@ r.post('/generate-image', async (req, res) => {
     }
 
     const imagePrompt = generateImagePrompt(text, project)
-    const prompt = encodeURIComponent(imagePrompt)
-    const url = `https://image.pollinations.ai/prompt/${prompt}?width=1200&height=675&nologo=true`
-    res.json({ url, prompt: imagePrompt })
+    // Keep URL simple — Pollinations 502s on width/height params with many prompts
+    const cleanPrompt = imagePrompt
+      .replace(/[^\w\s]/g, '')  // only letters, numbers, spaces
+      .replace(/\s+/g, ' ')     // collapse whitespace
+      .trim()
+      .substring(0, 100)        // keep URL short
+    const encoded = encodeURIComponent(cleanPrompt)
+    const seed = Date.now() % 100000
+    const url = `https://image.pollinations.ai/prompt/${encoded}?nologo=true&seed=${seed}`
+    res.json({ url, prompt: cleanPrompt })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
