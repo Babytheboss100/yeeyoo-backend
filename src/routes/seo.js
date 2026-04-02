@@ -18,7 +18,7 @@ r.get('/:projectId', async (req, res) => {
   }
 })
 
-// ─── Generate SEO profile using Claude ──────────────────────────────────────
+// ─── Generate SEO profile using Gemini Flash 2.0 ───────────────────────────
 r.post('/generate', async (req, res) => {
   const { projectId, companyName, companyOffer, industry, locations, targetCustomer, competitors } = req.body
 
@@ -26,7 +26,7 @@ r.post('/generate', async (req, res) => {
     return res.status(400).json({ error: 'Bedriftsnavn og bransje er påkrevd' })
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) return res.status(500).json({ error: 'AI API-nøkkel mangler' })
 
   const system = `Du er en norsk SEO-ekspert med dyp kunnskap om norsk marked, Google-søk i Norge, og digital markedsføring for norske bedrifter. Du svarer ALLTID med gyldig JSON — ingen markdown, ingen forklaringer utenfor JSON.`
@@ -67,28 +67,23 @@ VIKTIG:
 - Svar KUN med JSON, ingen annen tekst`
 
   try {
-    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+    const aiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2000,
-        system,
-        messages: [{ role: 'user', content: user }]
+        system_instruction: { parts: [{ text: system }] },
+        contents: [{ parts: [{ text: user }] }],
+        generationConfig: { maxOutputTokens: 2000, responseMimeType: 'application/json' }
       })
     })
 
     if (!aiRes.ok) {
       const e = await aiRes.json()
-      throw new Error(e.error?.message || 'Claude API feil')
+      throw new Error(e.error?.message || 'Gemini API feil')
     }
 
     const aiData = await aiRes.json()
-    const rawText = aiData.content[0].text
+    const rawText = aiData.candidates[0].content.parts[0].text
 
     // Parse JSON from response (handle possible markdown wrapping)
     let seoData
