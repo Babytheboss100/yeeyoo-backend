@@ -14,7 +14,9 @@ export async function initDB() {
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       name TEXT NOT NULL,
       email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
+      password_hash TEXT,
+      vipps_sub TEXT UNIQUE,
+      auth_provider TEXT DEFAULT 'email',
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
@@ -97,6 +99,12 @@ export async function initDB() {
 
     -- Onboarding flag
     ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_done BOOLEAN DEFAULT false;
+
+    -- OAuth fields
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS vipps_sub TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider TEXT DEFAULT 'email';
+    DO $$ BEGIN ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL; EXCEPTION WHEN OTHERS THEN NULL; END $$;
   `)
   console.log('✅ DB ready')
 }
