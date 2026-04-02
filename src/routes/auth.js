@@ -34,8 +34,24 @@ async function logLogin(user, req, method = 'email') {
   }
 }
 
+// Invite-only mode: check if email is whitelisted
+const INVITE_ONLY = process.env.INVITE_ONLY !== 'false' // default ON
+async function checkWhitelist(email) {
+  if (!INVITE_ONLY) return true
+  const { rows } = await pool.query(
+    'SELECT approved FROM invite_whitelist WHERE LOWER(email)=LOWER($1)', [email]
+  )
+  return rows[0]?.approved === true
+}
+
 // Helper: find or create user from OAuth provider
 async function findOrCreateOAuthUser({ sub, email, name, provider }) {
+  // Check whitelist for new OAuth users (existing users are allowed through)
+  const { rows: existing } = await pool.query('SELECT id FROM users WHERE email=$1', [email])
+  if (!existing[0] && !await checkWhitelist(email)) {
+    throw new Error('invite_only')
+  }
+
   // 1. Check by provider sub
   const { rows: bySub } = await pool.query(
     `SELECT * FROM users WHERE ${provider === 'vipps' ? 'vipps_sub' : 'google_sub'}=$1`, [sub]
@@ -65,6 +81,9 @@ r.post('/register', async (req, res) => {
   const { name, email, password } = req.body
   if (!name || !email || !password) return res.status(400).json({ error: 'Mangler felt' })
   try {
+    if (!await checkWhitelist(email)) {
+      return res.status(403).json({ error: 'invite_only', message: 'Vi er i lukket beta. Søk om tilgang.' })
+    }
     const hash = await bcrypt.hash(password, 10)
     const verifyToken = crypto.randomBytes(32).toString('hex')
     const { rows } = await pool.query(
@@ -88,6 +107,9 @@ r.post('/register', async (req, res) => {
 r.post('/login', async (req, res) => {
   const { email, password } = req.body
   try {
+    if (!await checkWhitelist(email)) {
+      return res.status(403).json({ error: 'invite_only', message: 'Vi er i lukket beta. Søk om tilgang.' })
+    }
     const { rows } = await pool.query('SELECT * FROM users WHERE email=$1', [email])
     if (!rows[0]) return res.status(401).json({ error: 'Feil e-post eller passord' })
     if (!rows[0].password_hash) {
@@ -244,7 +266,7 @@ r.get('/vipps/callback', async (req, res) => {
     res.redirect(`${frontend}?oauth_token=${signToken(user)}&oauth_name=${encodeURIComponent(user.name)}`)
   } catch (e) {
     console.error('Vipps error:', e)
-    res.redirect(`${frontend}?error=vipps_server`)
+    res.redirect(`${frontend}?error=${e.message==='invite_only'?'invite_only':'vipps_server'}`)
   }
 })
 
@@ -311,7 +333,7 @@ r.get('/google/callback', async (req, res) => {
     res.redirect(`${frontend}?oauth_token=${signToken(user)}&oauth_name=${encodeURIComponent(user.name)}`)
   } catch (e) {
     console.error('Google error:', e)
-    res.redirect(`${frontend}?error=google_server`)
+    res.redirect(`${frontend}?error=${e.message==='invite_only'?'invite_only':'google_server'}`)
   }
 })
 
@@ -320,7 +342,63 @@ r.get('/providers', (req, res) => {
   res.json({
     vipps: Boolean(process.env.VIPPS_CLIENT_ID),
     google: Boolean(process.env.GOOGLE_CLIENT_ID),
+    inviteOnly: INVITE_ONLY,
   })
+})
+
+// ─── BETA SIGNUP (public — no auth needed) ───────────────────────────────────
+r.post('/request-access', async (req, res) => {
+  const { email } = req.body
+  if (!email) return res.status(400).json({ error: 'E-post mangler' })
+  try {
+    await pool.query(
+      `INSERT INTO invite_whitelist (email, approved, note)
+       VALUES (LOWER($1), false, 'Søkt via beta-skjema')
+       ON CONFLICT (email) DO NOTHING`,
+      [email]
+    )
+    res.json({ message: 'Takk! Vi sender deg en invitasjon når plassen din er klar.' })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ─── ADMIN: Whitelist management ─────────────────────────────────────────────
+r.get('/whitelist', auth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM invite_whitelist ORDER BY created_at DESC'
+    )
+    res.json(rows)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+r.post('/whitelist', auth, async (req, res) => {
+  const { email, approved = true } = req.body
+  if (!email) return res.status(400).json({ error: 'E-post mangler' })
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO invite_whitelist (email, approved, note)
+       VALUES (LOWER($1), $2, 'Lagt til av admin')
+       ON CONFLICT (email) DO UPDATE SET approved=$2
+       RETURNING *`,
+      [email, approved]
+    )
+    res.json(rows[0])
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+r.delete('/whitelist/:id', auth, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM invite_whitelist WHERE id=$1', [req.params.id])
+    res.json({ ok: true })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
 })
 
 export default r
