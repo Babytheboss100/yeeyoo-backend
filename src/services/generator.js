@@ -1,4 +1,4 @@
-// ─── GeirX Multi-AI Generator ─────────────────────────────────────────────
+// ─── Yeeyoo Multi-AI Generator ──────────────────────────────────────────────
 export const AI_MODELS = {
   claude:   { id:'claude',   label:'Claude',   color:'#c96442', envKey:'ANTHROPIC_API_KEY' },
   gpt4o:    { id:'gpt4o',    label:'GPT-4o',   color:'#10a37f', envKey:'OPENAI_API_KEY' },
@@ -70,7 +70,7 @@ async function generateGrok({ system, user, apiKey }) {
   const r = await fetch('https://api.x.ai/v1/chat/completions', {
     method:'POST',
     headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${apiKey}` },
-    body: JSON.stringify({ model:'grok-2-latest', max_tokens:1000, messages:[{role:'system',content:system},{role:'user',content:user}] })
+    body: JSON.stringify({ model:'grok-4-1-fast', max_tokens:1000, messages:[{role:'system',content:system},{role:'user',content:user}] })
   })
   if (!r.ok) { const e=await r.json(); throw new Error(e.error?.message||'Grok feil') }
   const d = await r.json(); return d.choices[0].message.content
@@ -106,4 +106,41 @@ export async function generateContent({ project, templateId, customPrompt, platf
     text:    r.status==='fulfilled' ? r.value.text    : null,
     error:   r.status==='rejected'  ? r.reason?.message : null
   }))
+}
+
+/**
+ * Generate a relevant image based on post content.
+ * Uses AI to create a focused image prompt, then Pollinations.ai for generation.
+ */
+export function generateImagePrompt(text, project) {
+  // Extract key themes from the text
+  const content = text.substring(0, 300)
+
+  // Build a specific, content-aware image prompt
+  const businessContext = project?.name ? `for ${project.name}` : ''
+  const industry = project?.about ? `, industry: ${project.about.substring(0, 50)}` : ''
+
+  // Analyze content to determine image style
+  const isProduct = /lanser|produkt|nyhet|launch|product/i.test(content)
+  const isTeam = /team|ansatt|medarbeider|kolleg/i.test(content)
+  const isData = /resultat|vekst|tall|prosent|growth|data/i.test(content)
+  const isEvent = /event|konferanse|webinar|møte/i.test(content)
+  const isNature = /miljø|bærekraft|grønn|natur|sustain/i.test(content)
+
+  let style = 'modern professional business photography'
+  if (isProduct) style = 'sleek product showcase, studio lighting, minimalist background'
+  else if (isTeam) style = 'diverse professional team collaborating in modern office'
+  else if (isData) style = 'clean data visualization, business dashboard, growth charts'
+  else if (isEvent) style = 'professional conference or networking event atmosphere'
+  else if (isNature) style = 'sustainable business, green technology, eco-friendly'
+
+  // Extract key nouns/topics for specificity
+  const keywords = content
+    .replace(/[#@\n]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 4)
+    .slice(0, 5)
+    .join(', ')
+
+  return `${style} ${businessContext}${industry}. Visual theme: ${keywords}. High quality, photorealistic, no text overlays, no watermarks, professional lighting, 16:9 aspect ratio`
 }

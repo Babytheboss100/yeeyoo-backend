@@ -2,6 +2,7 @@ import { Router } from 'express'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { pool } from '../db.js'
+import { auth } from '../middleware/auth.js'
 
 const r = Router()
 
@@ -36,10 +37,11 @@ r.post('/login', async (req, res) => {
   }
 })
 
-r.get('/me', async (req, res) => {
-  // Caller must attach auth middleware
+// /me with auth middleware — fixed: was missing middleware before
+r.get('/me', auth, async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT id, name, email, created_at FROM users WHERE id=$1', [req.user.id])
+    if (!rows[0]) return res.status(404).json({ error: 'Bruker ikke funnet' })
     res.json(rows[0])
   } catch (e) {
     res.status(500).json({ error: e.message })

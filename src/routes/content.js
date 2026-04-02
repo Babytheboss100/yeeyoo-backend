@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
-import { generateContent, TEMPLATES, AI_MODELS } from '../services/generator.js'
+import { generateContent, generateImagePrompt, TEMPLATES, AI_MODELS } from '../services/generator.js'
 import { getSubscription, PLANS } from './billing.js'
 
 const r = Router()
@@ -99,12 +99,20 @@ r.post('/generate', async (req, res) => {
 
 // POST generate image with Pollinations.ai (gratis)
 r.post('/generate-image', async (req, res) => {
-  const { text } = req.body
+  const { text, projectId } = req.body
   if (!text) return res.status(400).json({ error: 'Mangler tekst' })
   try {
-    const prompt = encodeURIComponent('Professional social media image, modern clean corporate style, no text: ' + text.substring(0, 200))
-    const url = `https://image.pollinations.ai/prompt/${prompt}?width=1024&height=1024&nologo=true`
-    res.json({ url })
+    // Get project context for better image generation
+    let project = null
+    if (projectId) {
+      const { rows } = await pool.query('SELECT * FROM projects WHERE id=$1 AND user_id=$2', [projectId, req.user.id])
+      project = rows[0]
+    }
+
+    const imagePrompt = generateImagePrompt(text, project)
+    const prompt = encodeURIComponent(imagePrompt)
+    const url = `https://image.pollinations.ai/prompt/${prompt}?width=1200&height=675&nologo=true`
+    res.json({ url, prompt: imagePrompt })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }

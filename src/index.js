@@ -31,14 +31,9 @@ app.use('/api/projects', projectRoutes)
 app.use('/api/content', contentRoutes)
 app.use('/api/billing', billingRoutes)
 
-// /api/auth/me needs auth middleware
-app.get('/api/auth/me', auth, async (req, res) => {
-  const { pool } = await import('./db.js')
-  const { rows } = await pool.query('SELECT id, name, email FROM users WHERE id=$1', [req.user.id])
-  res.json(rows[0])
-})
+// /api/auth/me is now handled in routes/auth.js with proper middleware
 
-app.get('/health', (_, res) => res.json({ status: 'ok', version: '5.0.0' }))
+app.get('/health', (_, res) => res.json({ status: 'ok', version: '5.1.0' }))
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 initDB().then(() => {
