@@ -68,6 +68,35 @@ export async function initDB() {
       updated_at TIMESTAMPTZ DEFAULT NOW(),
       UNIQUE(user_id, platform)
     );
+
+    -- Team members
+    CREATE TABLE IF NOT EXISTS team_members (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+      user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      invited_by UUID REFERENCES users(id),
+      email TEXT NOT NULL,
+      role TEXT DEFAULT 'editor',
+      status TEXT DEFAULT 'pending',
+      invite_token TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(project_id, email)
+    );
+
+    -- Notifications
+    CREATE TABLE IF NOT EXISTS notifications (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      type TEXT DEFAULT 'info',
+      read BOOLEAN DEFAULT false,
+      link TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    -- Onboarding flag
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_done BOOLEAN DEFAULT false;
   `)
   console.log('✅ DB ready')
 }

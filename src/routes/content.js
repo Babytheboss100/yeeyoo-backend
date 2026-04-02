@@ -2,13 +2,18 @@ import { Router } from 'express'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
 import { generateContent, generateImagePrompt, TEMPLATES, AI_MODELS } from '../services/generator.js'
+import { INDUSTRY_TEMPLATES } from '../services/templates.js'
 import { getSubscription, PLANS } from './billing.js'
+import { createNotification } from './notifications.js'
 
 const r = Router()
 r.use(auth)
 
 // GET templates list
 r.get('/templates', (req, res) => res.json(TEMPLATES))
+
+// GET industry templates library
+r.get('/industry-templates', (req, res) => res.json(INDUSTRY_TEMPLATES))
 
 // GET AI models
 r.get('/ai-models', (req, res) => {
@@ -90,6 +95,12 @@ r.post('/generate', async (req, res) => {
 
     const posts = allResults.filter(r => r.status === 'fulfilled').map(r => r.value)
     const errors = allResults.filter(r => r.status === 'rejected').map(r => r.reason?.message)
+
+    // Notify user
+    if (posts.length) {
+      createNotification(req.user.id, 'Innhold generert', `${posts.length} nye innlegg er klare for gjennomgang.`, 'success')
+    }
+
     res.json({ posts, errors })
   } catch (e) {
     res.status(500).json({ error: e.message })
