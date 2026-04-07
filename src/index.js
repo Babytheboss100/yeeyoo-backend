@@ -14,6 +14,7 @@ import teamRoutes from './routes/team.js'
 import notificationRoutes from './routes/notifications.js'
 import exportRoutes from './routes/export.js'
 import seoRoutes from './routes/seo.js'
+import smartplanRoutes from './routes/smartplan.js'
 import { auth } from './middleware/auth.js'
 
 const app = express()
@@ -38,6 +39,7 @@ app.use('/api/team', teamRoutes)
 app.use('/api/notifications', notificationRoutes)
 app.use('/api/export', exportRoutes)
 app.use('/api/seo', seoRoutes)
+app.use('/api/smartplan', smartplanRoutes)
 
 // ─── Onboarding ───────────────────────────────────────────────────────────────
 app.get('/api/onboarding/status', auth, async (req, res) => {

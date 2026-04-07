@@ -153,6 +153,22 @@ export async function initDB() {
       method TEXT DEFAULT 'email',
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
+
+    -- Smart planlegger: business analyses
+    CREATE TABLE IF NOT EXISTS smartplan_businesses (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      url TEXT NOT NULL,
+      name TEXT,
+      industry TEXT,
+      summary TEXT,
+      raw_data TEXT,
+      analysis JSONB,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    -- Smart planlegger: link posts to analysed businesses
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS smartplan_business_id UUID REFERENCES smartplan_businesses(id) ON DELETE SET NULL;
   `)
   console.log('✅ DB ready')
 }
