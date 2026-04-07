@@ -170,5 +170,30 @@ export async function initDB() {
     -- Smart planlegger: link posts to analysed businesses
     ALTER TABLE posts ADD COLUMN IF NOT EXISTS smartplan_business_id UUID REFERENCES smartplan_businesses(id) ON DELETE SET NULL;
   `)
+
+  // Bootstrap admin user
+  const ADMIN_EMAIL = 'heljarprebensen@gmail.com'
+  const { rows } = await pool.query('SELECT id, is_admin, email_verified FROM users WHERE LOWER(email)=LOWER($1)', [ADMIN_EMAIL])
+  if (rows[0]) {
+    if (!rows[0].is_admin || !rows[0].email_verified) {
+      await pool.query('UPDATE users SET is_admin=true, email_verified=true WHERE id=$1', [rows[0].id])
+      console.log(`✅ Admin upgraded: ${ADMIN_EMAIL}`)
+    }
+  } else {
+    await pool.query(
+      `INSERT INTO users (name, email, auth_provider, is_admin, email_verified, onboarding_done)
+       VALUES ('Heljar', $1, 'google', true, true, true)`,
+      [ADMIN_EMAIL]
+    )
+    console.log(`✅ Admin created: ${ADMIN_EMAIL}`)
+  }
+  // Ensure admin is on the whitelist too
+  await pool.query(
+    `INSERT INTO invite_whitelist (email, approved, note)
+     VALUES (LOWER($1), true, 'Admin bootstrap')
+     ON CONFLICT (email) DO UPDATE SET approved=true`,
+    [ADMIN_EMAIL]
+  )
+
   console.log('✅ DB ready')
 }

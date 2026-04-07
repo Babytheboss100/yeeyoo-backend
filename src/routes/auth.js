@@ -126,8 +126,8 @@ r.post('/login', async (req, res) => {
     }
     const ok = await bcrypt.compare(password, rows[0].password_hash)
     if (!ok) return res.status(401).json({ error: 'Feil e-post eller passord' })
-    // Block unverified email users
-    if (rows[0].auth_provider === 'email' && rows[0].email_verified === false) {
+    // Block unverified email users (admins bypass)
+    if (rows[0].auth_provider === 'email' && rows[0].email_verified === false && !rows[0].is_admin) {
       return res.status(403).json({
         error: 'E-posten din er ikke bekreftet. Sjekk innboksen din.',
         needsVerification: true,
