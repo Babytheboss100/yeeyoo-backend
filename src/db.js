@@ -176,20 +176,13 @@ export async function initDB() {
 
   // Bootstrap admin user
   const ADMIN_EMAIL = 'heljarprebensen@gmail.com'
-  const { rows } = await pool.query('SELECT id, is_admin, email_verified FROM users WHERE LOWER(email)=LOWER($1)', [ADMIN_EMAIL])
-  if (rows[0]) {
-    if (!rows[0].is_admin || !rows[0].email_verified) {
-      await pool.query('UPDATE users SET is_admin=true, email_verified=true WHERE id=$1', [rows[0].id])
-      console.log(`✅ Admin upgraded: ${ADMIN_EMAIL}`)
-    }
-  } else {
-    await pool.query(
-      `INSERT INTO users (name, email, auth_provider, is_admin, email_verified, onboarding_done)
-       VALUES ('Heljar', $1, 'google', true, true, true)`,
-      [ADMIN_EMAIL]
-    )
-    console.log(`✅ Admin created: ${ADMIN_EMAIL}`)
-  }
+  await pool.query(
+    `INSERT INTO users (id, name, email, auth_provider, is_admin, email_verified, onboarding_done)
+     VALUES (gen_random_uuid(), 'Heljar', $1, 'google', true, true, true)
+     ON CONFLICT (email) DO UPDATE SET is_admin = true, email_verified = true`,
+    [ADMIN_EMAIL]
+  )
+  console.log(`✅ Admin bootstrap: ${ADMIN_EMAIL}`)
   // Ensure admin is on the whitelist too
   await pool.query(
     `INSERT INTO invite_whitelist (email, approved, note)
