@@ -144,7 +144,7 @@ export async function initDB() {
 
     -- Login tracking
     CREATE TABLE IF NOT EXISTS login_logs (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
       user_id UUID REFERENCES users(id) ON DELETE CASCADE,
       email TEXT NOT NULL,
       ip_address TEXT,
@@ -217,6 +217,15 @@ export async function initDB() {
     END $$;
   `)
   console.log('  posts.smartplan_business_id OK')
+
+  // Verify smartplan_businesses exists before proceeding
+  const { rows: tableCheck } = await pool.query(
+    `SELECT to_regclass('public.smartplan_businesses') AS tbl`
+  )
+  if (!tableCheck[0]?.tbl) {
+    throw new Error('smartplan_businesses table was not created — aborting startup')
+  }
+  console.log('  smartplan_businesses verified ✓')
 
   // Bootstrap admin user
   const ADMIN_EMAIL = 'heljarprebensen@gmail.com'
