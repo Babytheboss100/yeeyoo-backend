@@ -181,6 +181,16 @@ export async function initDB() {
   `)
   console.log('  smartplan_business_id added OK')
 
+  // Add missing columns to smartplan_businesses
+  await pool.query(`
+    ALTER TABLE smartplan_businesses
+    ADD COLUMN IF NOT EXISTS industry TEXT,
+    ADD COLUMN IF NOT EXISTS target_audience TEXT,
+    ADD COLUMN IF NOT EXISTS tone TEXT,
+    ADD COLUMN IF NOT EXISTS goals TEXT
+  `)
+  console.log('  smartplan_businesses columns added OK')
+
   // Bootstrap admin user
   const ADMIN_EMAIL = 'heljarprebensen@gmail.com'
   await pool.query(
