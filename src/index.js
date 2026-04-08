@@ -16,6 +16,7 @@ import exportRoutes from './routes/export.js'
 import seoRoutes from './routes/seo.js'
 import smartplanRoutes from './routes/smartplan.js'
 import autopilotRoutes from './routes/autopilot.js'
+import imageRoutes from './routes/images.js'
 import { auth } from './middleware/auth.js'
 
 const app = express()
@@ -42,6 +43,7 @@ app.use('/api/export', exportRoutes)
 app.use('/api/seo', seoRoutes)
 app.use('/api/smartplan', smartplanRoutes)
 app.use('/api/autopilot', autopilotRoutes)
+app.use('/api/images', imageRoutes)
 
 // ─── Onboarding ───────────────────────────────────────────────────────────────
 app.get('/api/onboarding/status', auth, async (req, res) => {
