@@ -5,18 +5,18 @@ const r = Router()
 r.use(auth)
 
 function buildImagePrompt(content, platform) {
-  // Extract key theme from post content
-  const snippet = content.substring(0, 150).replace(/[#@\n]/g, ' ').trim()
+  // Extract keywords from post content for relevance
+  const clean = content.replace(/[#@\n\r]/g, ' ').replace(/\s+/g, ' ').trim()
+  const keywords = clean.substring(0, 120)
 
-  const platformStyle = {
-    linkedin: 'corporate boardroom, professional handshake, laptop with financial dashboard',
-    instagram: 'lifestyle wealth, modern apartment with city view, coffee and laptop',
-    facebook: 'friendly business meeting, diverse team collaboration, bright office',
-    tiktok: 'dynamic young professional, smartphone with trading app, energetic urban setting',
+  const prompts = {
+    linkedin: `Modern Norwegian residential building exterior, professional real estate investment, Oslo cityscape background, sunny day, photorealistic, architectural photography, no text, no logos, 16:9. Context: ${keywords}`,
+    instagram: `Stunning Norwegian luxury apartment interior, bright Scandinavian design, large windows with city view, aspirational lifestyle, natural light, photorealistic, no text, 16:9. Context: ${keywords}`,
+    facebook: `Happy Norwegian family outside their new modern home, sunny day, green lawn, real estate success story, warm atmosphere, photorealistic, no text, 16:9. Context: ${keywords}`,
+    tiktok: `Young Norwegian professional pointing at real estate investment app on phone, modern urban background, Oslo street, dynamic energy, photorealistic, no text, 16:9. Context: ${keywords}`,
   }
-  const scene = platformStyle[platform?.toLowerCase()] || platformStyle.linkedin
 
-  return `Professional financial marketing photo. ${scene}. Context: ${snippet}. Clean modern Scandinavian office interior, Norwegian aesthetic, natural light, warm tones. High quality, photorealistic, sharp focus, suitable for social media ad. No text, no logos, no watermarks. 16:9 aspect ratio.`
+  return prompts[platform?.toLowerCase()] || prompts.linkedin
 }
 
 r.post('/generate', async (req, res) => {
