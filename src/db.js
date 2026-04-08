@@ -160,24 +160,33 @@ export async function initDB() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
-    -- Smart planlegger
-    CREATE TABLE IF NOT EXISTS smartplan_businesses (
-      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-      user_id TEXT,
-      url TEXT,
-      name TEXT,
-      description TEXT,
-      industry TEXT,
-      target_audience TEXT,
-      tone TEXT,
-      goals TEXT,
-      summary TEXT,
-      raw_data TEXT,
-      analysis JSONB,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-
   `)
+
+  // smartplan_businesses — separate query to ensure it runs even if main batch has issues
+  console.log('  Creating smartplan_businesses table...')
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS smartplan_businesses (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        user_id TEXT,
+        url TEXT,
+        name TEXT,
+        description TEXT,
+        industry TEXT,
+        target_audience TEXT,
+        tone TEXT,
+        goals TEXT,
+        summary TEXT,
+        raw_data TEXT,
+        analysis JSONB,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `)
+    console.log('  ✅ smartplan_businesses created/verified')
+  } catch (e) {
+    console.error('  ❌ smartplan_businesses creation FAILED:', e.message)
+    throw e
+  }
 
   // Drop all user_id FK constraints — users.id is TEXT but FKs expect UUID
   console.log('  Dropping user_id FK constraints...')
