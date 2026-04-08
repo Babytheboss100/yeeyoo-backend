@@ -156,7 +156,7 @@ export async function initDB() {
 
   `)
 
-  // Smart planlegger table — standalone, no FKs, TEXT ids to match schema
+  // Smart planlegger table — definitive version with ALL columns
   console.log('  Creating smartplan_businesses...')
   await pool.query(`
     CREATE TABLE IF NOT EXISTS smartplan_businesses (
@@ -165,31 +165,34 @@ export async function initDB() {
       url TEXT,
       name TEXT,
       description TEXT,
+      industry TEXT,
+      target_audience TEXT,
+      tone TEXT,
+      goals TEXT,
+      summary TEXT,
+      raw_data TEXT,
       analysis JSONB,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `)
-  console.log('  smartplan_businesses created OK')
+  // Ensure all columns exist on existing tables
+  await pool.query(`ALTER TABLE smartplan_businesses ADD COLUMN IF NOT EXISTS summary TEXT`)
+  await pool.query(`ALTER TABLE smartplan_businesses ADD COLUMN IF NOT EXISTS raw_data TEXT`)
+  await pool.query(`ALTER TABLE smartplan_businesses ADD COLUMN IF NOT EXISTS industry TEXT`)
+  await pool.query(`ALTER TABLE smartplan_businesses ADD COLUMN IF NOT EXISTS target_audience TEXT`)
+  await pool.query(`ALTER TABLE smartplan_businesses ADD COLUMN IF NOT EXISTS tone TEXT`)
+  await pool.query(`ALTER TABLE smartplan_businesses ADD COLUMN IF NOT EXISTS goals TEXT`)
+  await pool.query(`ALTER TABLE smartplan_businesses ADD COLUMN IF NOT EXISTS description TEXT`)
+  console.log('  smartplan_businesses OK')
 
   // Add smartplan_business_id column to posts
-  console.log('  Adding smartplan_business_id to posts...')
   await pool.query(`
     DO $$ BEGIN
       ALTER TABLE posts ADD COLUMN smartplan_business_id TEXT;
     EXCEPTION WHEN duplicate_column THEN NULL;
     END $$;
   `)
-  console.log('  smartplan_business_id added OK')
-
-  // Add missing columns to smartplan_businesses
-  await pool.query(`
-    ALTER TABLE smartplan_businesses
-    ADD COLUMN IF NOT EXISTS industry TEXT,
-    ADD COLUMN IF NOT EXISTS target_audience TEXT,
-    ADD COLUMN IF NOT EXISTS tone TEXT,
-    ADD COLUMN IF NOT EXISTS goals TEXT
-  `)
-  console.log('  smartplan_businesses columns added OK')
+  console.log('  posts.smartplan_business_id OK')
 
   // Bootstrap admin user
   const ADMIN_EMAIL = 'heljarprebensen@gmail.com'
