@@ -80,8 +80,8 @@ Svar med denne eksakte JSON-strukturen:
 
     // Save to database
     const { rows } = await pool.query(
-      `INSERT INTO smartplan_businesses (user_id, url, name, industry, summary, raw_data, analysis)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      `INSERT INTO smartplan_businesses (id, user_id, url, name, industry, summary, raw_data, analysis)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7) RETURNING *`,
       [
         req.user.id,
         url,
@@ -95,6 +95,7 @@ Svar med denne eksakte JSON-strukturen:
 
     res.json(rows[0])
   } catch (e) {
+    console.error('Smartplan analyse error:', e.stack || e.message)
     res.status(500).json({ error: e.message })
   }
 })
@@ -234,6 +235,7 @@ Generer nøyaktig ${selectedDays.length} innlegg. Varier innhold, pilarer og pla
 
     res.json({ posts: savedPosts, total: savedPosts.length })
   } catch (e) {
+    console.error('Smartplan generate-month error:', e.stack || e.message)
     res.status(500).json({ error: e.message })
   }
 })

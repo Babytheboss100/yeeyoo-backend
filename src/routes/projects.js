@@ -19,8 +19,8 @@ r.post('/', async (req, res) => {
   const { name, slug, color, tone, audience, keywords, about } = req.body
   try {
     const { rows } = await pool.query(
-      `INSERT INTO projects (user_id, name, slug, color, tone, audience, keywords, about)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      `INSERT INTO projects (id, user_id, name, slug, color, tone, audience, keywords, about)
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
       [req.user.id, name, slug || name.toLowerCase().replace(/\s+/g,'-'), color||'#5555ff', tone||'profesjonell', audience||'investorer', keywords||'', about||'']
     )
     res.json(rows[0])
