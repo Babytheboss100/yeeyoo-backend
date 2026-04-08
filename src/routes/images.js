@@ -29,13 +29,17 @@ r.post('/generate', async (req, res) => {
 
   try {
     const promptText = buildImagePrompt(content, platform)
-    console.log('Image generate: platform:', platform, '| prompt:', promptText.substring(0, 100))
+    console.log('=== IMAGE GENERATE START ===')
+    console.log('Platform:', platform)
+    console.log('Prompt:', promptText)
+    console.log('API Key:', apiKey ? `${apiKey.substring(0, 8)}...${apiKey.substring(apiKey.length - 4)}` : 'MISSING')
 
     const formData = new FormData()
     formData.append('prompt', promptText)
     formData.append('output_format', 'webp')
     formData.append('aspect_ratio', '16:9')
 
+    console.log('Calling Stability AI v2beta/stable-image/generate/core ...')
     const aiRes = await fetch('https://api.stability.ai/v2beta/stable-image/generate/core', {
       method: 'POST',
       headers: {
@@ -45,30 +49,44 @@ r.post('/generate', async (req, res) => {
       body: formData
     })
 
+    console.log('Stability AI response:', {
+      status: aiRes.status,
+      statusText: aiRes.statusText,
+      contentType: aiRes.headers.get('content-type'),
+      contentLength: aiRes.headers.get('content-length'),
+      finishReason: aiRes.headers.get('finish-reason'),
+      seed: aiRes.headers.get('seed'),
+    })
+
     if (!aiRes.ok) {
-      const errText = await aiRes.text()
-      console.error('Stability AI error:', aiRes.status, errText)
-      throw new Error('Bildegenerering feilet: ' + aiRes.status)
+      const errBody = await aiRes.text()
+      console.error('=== STABILITY AI ERROR ===')
+      console.error('Status:', aiRes.status, aiRes.statusText)
+      console.error('Headers:', JSON.stringify(Object.fromEntries(aiRes.headers.entries())))
+      console.error('Body:', errBody)
+      throw new Error(`Stability AI ${aiRes.status}: ${errBody.substring(0, 200)}`)
     }
 
     const contentType = aiRes.headers.get('content-type') || ''
 
     let dataUrl
     if (contentType.includes('application/json')) {
-      // API returned JSON with base64 image
       const json = await aiRes.json()
+      console.log('Got JSON response, keys:', Object.keys(json))
       const b64 = json.image || json.artifacts?.[0]?.base64
-      if (!b64) throw new Error('Ingen bildedata i respons')
+      if (!b64) {
+        console.error('No image data in JSON:', JSON.stringify(json).substring(0, 500))
+        throw new Error('Ingen bildedata i respons')
+      }
       dataUrl = `data:image/webp;base64,${b64}`
-      console.log('Image generate: got JSON response with base64')
+      console.log('Image from JSON, base64 length:', b64.length)
     } else {
-      // API returned raw binary image
       const buffer = Buffer.from(await aiRes.arrayBuffer())
-      const base64 = buffer.toString('base64')
-      dataUrl = `data:image/webp;base64,${base64}`
-      console.log('Image generate: got binary response,', buffer.length, 'bytes')
+      dataUrl = `data:image/webp;base64,${buffer.toString('base64')}`
+      console.log('Image from binary, size:', buffer.length, 'bytes')
     }
 
+    console.log('=== IMAGE GENERATE SUCCESS ===')
     res.json({ image: dataUrl, format: 'webp' })
   } catch (e) {
     console.error('Image generate error:', e.stack || e.message)
