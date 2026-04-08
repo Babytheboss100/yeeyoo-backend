@@ -38,11 +38,14 @@ async function logLogin(user, req, method = 'email') {
 const INVITE_ONLY = process.env.INVITE_ONLY !== 'false' // default ON
 async function checkWhitelist(email) {
   if (!INVITE_ONLY) return true
-  // Admins bypass whitelist
+  // Admins always bypass
   const { rows: user } = await pool.query(
     'SELECT is_admin FROM users WHERE LOWER(email)=LOWER($1)', [email]
   )
-  if (user[0]?.is_admin) return true
+  if (user[0]?.is_admin === true) return true
+  // Hardcoded admin emails always bypass
+  const adminEmails = ['heljarprebensen@gmail.com']
+  if (adminEmails.includes(email.toLowerCase())) return true
   // Check whitelist
   const { rows } = await pool.query(
     'SELECT approved FROM invite_whitelist WHERE LOWER(email)=LOWER($1)', [email]
