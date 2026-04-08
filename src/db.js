@@ -9,6 +9,12 @@ export const pool = new Pool({
 })
 
 export async function initDB() {
+  try {
+    const dbUrl = new URL(process.env.DATABASE_URL || '')
+    console.log(`📡 DB connecting to: ${dbUrl.hostname}${dbUrl.pathname} (port ${dbUrl.port || 5432})`)
+  } catch {
+    console.log('⚠️ DATABASE_URL not set or invalid')
+  }
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
