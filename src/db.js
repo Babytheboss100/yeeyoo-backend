@@ -169,6 +169,17 @@ export async function initDB() {
   await pool.query(`ALTER TABLE login_logs DROP CONSTRAINT IF EXISTS login_logs_user_id_fkey`)
   console.log('  FK constraints dropped OK')
 
+  // Fix id defaults on tables that may have UUID type but need text-compatible defaults
+  await pool.query(`ALTER TABLE login_logs ALTER COLUMN id SET DEFAULT gen_random_uuid()::text`)
+  await pool.query(`ALTER TABLE notifications ALTER COLUMN id SET DEFAULT gen_random_uuid()::text`)
+  await pool.query(`ALTER TABLE posts ALTER COLUMN id SET DEFAULT gen_random_uuid()::text`)
+  await pool.query(`ALTER TABLE projects ALTER COLUMN id SET DEFAULT gen_random_uuid()::text`)
+  await pool.query(`ALTER TABLE subscriptions ALTER COLUMN id SET DEFAULT gen_random_uuid()::text`)
+  await pool.query(`ALTER TABLE oauth_tokens ALTER COLUMN id SET DEFAULT gen_random_uuid()::text`)
+  await pool.query(`ALTER TABLE team_members ALTER COLUMN id SET DEFAULT gen_random_uuid()::text`)
+  await pool.query(`ALTER TABLE seo_profiles ALTER COLUMN id SET DEFAULT gen_random_uuid()::text`)
+  console.log('  id defaults fixed OK')
+
   // Smart planlegger table — definitive version with ALL columns
   console.log('  Creating smartplan_businesses...')
   await pool.query(`
