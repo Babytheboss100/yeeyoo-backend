@@ -156,11 +156,12 @@ export async function initDB() {
 
   `)
 
-  // Smart planlegger tables (separate query — FK needs users table to exist first)
+  // Smart planlegger tables (separate queries so FKs resolve correctly)
+  console.log('  Creating smartplan_businesses...')
   await pool.query(`
     CREATE TABLE IF NOT EXISTS smartplan_businesses (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
       url TEXT NOT NULL,
       name TEXT,
       industry TEXT,
@@ -170,8 +171,12 @@ export async function initDB() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
   `)
+  console.log('  Adding smartplan_business_id to posts...')
   await pool.query(`
-    ALTER TABLE posts ADD COLUMN IF NOT EXISTS smartplan_business_id UUID REFERENCES smartplan_businesses(id) ON DELETE SET NULL;
+    DO $$ BEGIN
+      ALTER TABLE posts ADD COLUMN smartplan_business_id UUID REFERENCES smartplan_businesses(id) ON DELETE SET NULL;
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$;
   `)
 
   // Bootstrap admin user
