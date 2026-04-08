@@ -9,10 +9,10 @@ function buildImagePrompt(content, platform) {
   const keywords = clean.substring(0, 150)
 
   const prompts = {
-    linkedin: `A confident Norwegian man in his 30s wearing a navy suit, standing in a modern glass-walled Oslo office. He is presenting a real estate investment portfolio on a large wall-mounted screen showing graphs and property photos. Oslo fjord and Barcode district visible through floor-to-ceiling windows. Bright natural daylight, clean Scandinavian interior with light wood and white walls. Shot from a slight low angle, professional corporate photography style. The scene relates to: ${keywords}`,
-    instagram: `A stylish young Norwegian couple in their late 20s walking through a bright, newly renovated luxury apartment in Oslo. Minimalist Scandinavian interior with large windows overlooking the city, white oak floors, designer furniture. Golden hour sunlight streaming in. They are smiling and pointing at the view. Aspirational lifestyle photography, warm color palette, shallow depth of field. The scene relates to: ${keywords}`,
-    facebook: `A happy Norwegian family of four — parents in their 30s and two young children — standing in front of their new modern Scandinavian-style home. The house has clean lines, large windows, and a small green front garden. Bright sunny summer day in Norway, everyone is smiling. Warm, inviting atmosphere. Documentary-style photography with natural lighting. The scene relates to: ${keywords}`,
-    tiktok: `A young energetic Norwegian woman in her mid-20s, casually dressed, holding up her smartphone toward the camera showing a property investment app screen. She has a big smile and is standing on a modern Oslo street with colorful buildings and a tram in the background. Dynamic composition, slightly tilted camera angle, vibrant colors, natural outdoor lighting. The scene relates to: ${keywords}`,
+    linkedin: `Portrait photo of a confident Norwegian businessman in his 40s, standing outdoors in Oslo city center, wearing a dark suit, smiling, modern buildings in background, professional headshot style, natural daylight, photorealistic, Canon camera quality. Context: ${keywords}`,
+    instagram: `Young Norwegian woman in her 30s sitting at outdoor café in Oslo, laptop open, coffee cup, city street background, sunshine, casual professional style, lifestyle photography, photorealistic, natural light. Context: ${keywords}`,
+    facebook: `Happy Norwegian couple signing documents at a desk, both smiling, bright room with large windows, real estate or investment success, warm atmosphere, photorealistic, faces clearly visible. Context: ${keywords}`,
+    tiktok: `Energetic young Norwegian man outdoors in Oslo, casual clothes, big smile, pointing at phone screen, urban background, dynamic street photography, photorealistic. Context: ${keywords}`,
   }
 
   return prompts[platform?.toLowerCase()] || prompts.linkedin
