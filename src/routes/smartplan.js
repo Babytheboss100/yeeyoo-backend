@@ -79,23 +79,26 @@ Svar med denne eksakte JSON-strukturen:
     }
 
     // Save to database
+    console.log('Smartplan analyse: saving to DB for user', req.user.id)
     const { rows } = await pool.query(
       `INSERT INTO smartplan_businesses (id, user_id, url, name, industry, summary, raw_data, analysis)
-       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+       VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7::jsonb) RETURNING *`,
       [
         req.user.id,
         url,
-        analysis.name,
-        analysis.industry,
-        analysis.summary,
-        truncated,
+        analysis.name || null,
+        analysis.industry || null,
+        analysis.summary || null,
+        truncated || null,
         JSON.stringify(analysis)
       ]
     )
+    console.log('Smartplan analyse: saved OK, id:', rows[0]?.id)
 
     res.json(rows[0])
   } catch (e) {
-    console.error('Smartplan analyse error:', e.stack || e.message)
+    console.error('Smartplan analyse FULL ERROR:', e.stack)
+    console.error('Smartplan analyse error detail:', e.message, '| code:', e.code, '| column:', e.column, '| table:', e.table)
     res.status(500).json({ error: e.message })
   }
 })
@@ -304,12 +307,16 @@ r.patch('/posts/:id/schedule', async (req, res) => {
 // ─── Get user's businesses ──────────────────────────────────────────────────
 r.get('/businesses', async (req, res) => {
   try {
+    console.log('Smartplan businesses: fetching for user', req.user.id)
     const { rows } = await pool.query(
       'SELECT * FROM smartplan_businesses WHERE user_id = $1 ORDER BY created_at DESC',
       [req.user.id]
     )
+    console.log('Smartplan businesses: found', rows.length)
     res.json(rows)
   } catch (e) {
+    console.error('Smartplan businesses FULL ERROR:', e.stack)
+    console.error('Smartplan businesses error detail:', e.message, '| code:', e.code, '| table:', e.table)
     res.status(500).json({ error: e.message })
   }
 })
