@@ -9,10 +9,10 @@ function buildImagePrompt(content, platform) {
   const keywords = clean.substring(0, 150)
 
   const prompts = {
-    linkedin: `Portrait photo of a confident Norwegian businessman in his 40s, standing outdoors in Oslo city center, wearing a dark suit, smiling, modern buildings in background, professional headshot style, natural daylight, photorealistic, Canon camera quality. Context: ${keywords}`,
-    instagram: `Young Norwegian woman in her 30s sitting at outdoor café in Oslo, laptop open, coffee cup, city street background, sunshine, casual professional style, lifestyle photography, photorealistic, natural light. Context: ${keywords}`,
-    facebook: `Happy Norwegian couple signing documents at a desk, both smiling, bright room with large windows, real estate or investment success, warm atmosphere, photorealistic, faces clearly visible. Context: ${keywords}`,
-    tiktok: `Energetic young Norwegian man outdoors in Oslo, casual clothes, big smile, pointing at phone screen, urban background, dynamic street photography, photorealistic. Context: ${keywords}`,
+    linkedin: `Aerial view of Oslo fjord at sunrise, dramatic Norwegian landscape, modern city skyline in background, golden hour light, photorealistic nature photography. Context: ${keywords}`,
+    instagram: `Beautiful Norwegian mountain landscape with a lake reflection, sunny day, green hills, dramatic sky, travel photography, photorealistic. Context: ${keywords}`,
+    facebook: `Cozy Norwegian cabin by a fjord, warm lights inside, snowy mountains in background, peaceful winter scene, photorealistic. Context: ${keywords}`,
+    tiktok: `Norwegian northern lights aurora borealis over snowy landscape, vivid green and purple colors, photorealistic night photography. Context: ${keywords}`,
   }
 
   return prompts[platform?.toLowerCase()] || prompts.linkedin

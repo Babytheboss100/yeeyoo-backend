@@ -165,7 +165,9 @@ r.post('/generate-month', async (req, res) => {
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 4000,
-        system: `You are a world-class social media copywriter specializing in fintech and investment products. Generate posts that are SHORT, punchy, and conversion-focused.
+        system: `Du er en ekspert på korte, fengende sosiale medier-innlegg. MAKS 3 setninger totalt. Ikke mer. Kutt alt unødvendig.
+
+You are a world-class social media copywriter specializing in fintech and investment products. Generate posts that are SHORT, punchy, and conversion-focused.
 
 BEDRIFT: ${analysis.name}
 BRANSJE: ${analysis.industry}
