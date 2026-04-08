@@ -185,8 +185,8 @@ export async function initDB() {
   console.log(`✅ Admin bootstrap: ${ADMIN_EMAIL}`)
   // Ensure admin is on the whitelist too
   await pool.query(
-    `INSERT INTO invite_whitelist (email, approved, note)
-     VALUES (LOWER($1), true, 'Admin bootstrap')
+    `INSERT INTO invite_whitelist (id, email, approved, note)
+     VALUES (gen_random_uuid(), LOWER($1), true, 'Admin bootstrap')
      ON CONFLICT (email) DO UPDATE SET approved=true`,
     [ADMIN_EMAIL]
   )
