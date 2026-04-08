@@ -175,16 +175,18 @@ TONE: ${analysis.toneOfVoice || 'Profesjonell men menneskelig'}
 INNHOLDSPILARER: ${pillars.join(', ')}
 STYRKER: ${(analysis.strengths || []).join(', ')}
 
-Rules:
-- LinkedIn: Max 150 words. Hook in first line. 3-5 bullet points max. One clear CTA.
-- Instagram: Max 100 words. Emotional hook. Lifestyle angle. 5-8 relevant hashtags.
-- Facebook: Max 120 words. Story-based. Question to drive comments.
-- TikTok: Max 80 words. Trendy, direct, bold claims.
+VIKTIG: LinkedIn maks 150 ord. Instagram maks 80 ord. Facebook maks 120 ord. TikTok maks 60 ord. Aldri mer. Telle nøye.
 
-Never use generic CTAs like 'comment below'. Use specific CTAs like 'Link in bio', 'DM us', or direct URLs.
-Always lead with a bold claim or surprising stat.
-Write in Norwegian (Bokmål).
-Sound human, not corporate.
+Rules:
+- LinkedIn: MAKS 150 ord. Hook i første linje. 3-5 kulepunkter. Én tydelig CTA.
+- Instagram: MAKS 80 ord. Emosjonell hook. Livsstil-vinkel. 5-8 relevante hashtags.
+- Facebook: MAKS 120 ord. Historiebasert. Spørsmål som driver kommentarer.
+- TikTok: MAKS 60 ord. Trendy, direkte, modige påstander.
+
+Aldri bruk generiske CTAer som 'kommenter under'. Bruk spesifikke CTAer som 'Link i bio', 'Send oss en DM', eller direkte URLer.
+Start alltid med en modig påstand eller overraskende statistikk.
+Skriv på norsk (Bokmål).
+Høres menneskelig ut, ikke korporativt.
 
 Svar KUN med gyldig JSON-array.`,
         messages: [{

@@ -9,11 +9,12 @@ function buildImagePrompt(content, platform) {
   const clean = content.replace(/[#@\n\r]/g, ' ').replace(/\s+/g, ' ').trim()
   const keywords = clean.substring(0, 120)
 
+  const people = 'Norwegian people, faces visible, professional setting'
   const prompts = {
-    linkedin: `Modern Norwegian residential building exterior, professional real estate investment, Oslo cityscape background, sunny day, photorealistic, architectural photography, no text, no logos, 16:9. Context: ${keywords}`,
-    instagram: `Stunning Norwegian luxury apartment interior, bright Scandinavian design, large windows with city view, aspirational lifestyle, natural light, photorealistic, no text, 16:9. Context: ${keywords}`,
-    facebook: `Happy Norwegian family outside their new modern home, sunny day, green lawn, real estate success story, warm atmosphere, photorealistic, no text, 16:9. Context: ${keywords}`,
-    tiktok: `Young Norwegian professional pointing at real estate investment app on phone, modern urban background, Oslo street, dynamic energy, photorealistic, no text, 16:9. Context: ${keywords}`,
+    linkedin: `Confident Norwegian business professional in modern Oslo office, ${people}, presenting real estate investment data on screen, city skyline through window, sunny day, photorealistic, sharp focus, no text, no logos, 16:9. Context: ${keywords}`,
+    instagram: `Smiling young Norwegian couple touring a bright Scandinavian luxury apartment, ${people}, large windows with Oslo city view, aspirational lifestyle, natural light, warm tones, photorealistic, no text, 16:9. Context: ${keywords}`,
+    facebook: `Happy Norwegian family with children standing outside their new modern home, ${people}, sunny day, green lawn, celebrating, warm atmosphere, photorealistic, no text, 16:9. Context: ${keywords}`,
+    tiktok: `Energetic young Norwegian professional showing real estate investment app on phone to camera, ${people}, modern Oslo street background, dynamic angle, vibrant energy, photorealistic, no text, 16:9. Context: ${keywords}`,
   }
 
   return prompts[platform?.toLowerCase()] || prompts.linkedin
