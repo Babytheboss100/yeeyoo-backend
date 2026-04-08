@@ -160,6 +160,23 @@ export async function initDB() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
+    -- Smart planlegger
+    CREATE TABLE IF NOT EXISTS smartplan_businesses (
+      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      user_id TEXT,
+      url TEXT,
+      name TEXT,
+      description TEXT,
+      industry TEXT,
+      target_audience TEXT,
+      tone TEXT,
+      goals TEXT,
+      summary TEXT,
+      raw_data TEXT,
+      analysis JSONB,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
   `)
 
   // Drop all user_id FK constraints — users.id is TEXT but FKs expect UUID
@@ -186,26 +203,7 @@ export async function initDB() {
   await pool.query(`ALTER TABLE seo_profiles ALTER COLUMN id SET DEFAULT gen_random_uuid()::text`)
   console.log('  id defaults fixed OK')
 
-  // Smart planlegger table — definitive version with ALL columns
-  console.log('  Creating smartplan_businesses...')
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS smartplan_businesses (
-      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-      user_id TEXT,
-      url TEXT,
-      name TEXT,
-      description TEXT,
-      industry TEXT,
-      target_audience TEXT,
-      tone TEXT,
-      goals TEXT,
-      summary TEXT,
-      raw_data TEXT,
-      analysis JSONB,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `)
-  // Ensure all columns exist on existing tables
+  // Ensure all columns exist on smartplan_businesses
   await pool.query(`ALTER TABLE smartplan_businesses ADD COLUMN IF NOT EXISTS summary TEXT`)
   await pool.query(`ALTER TABLE smartplan_businesses ADD COLUMN IF NOT EXISTS raw_data TEXT`)
   await pool.query(`ALTER TABLE smartplan_businesses ADD COLUMN IF NOT EXISTS industry TEXT`)
