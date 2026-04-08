@@ -148,9 +148,30 @@ app.get('/api/admin/login-stats', auth, async (req, res) => {
 app.get('/health', (_, res) => res.json({ status: 'ok', version: '7.0.0' }))
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-initDB().then(() => {
-  app.listen(PORT, () => console.log(`🚀 Yeeyoo backend v6.0 kjører på port ${PORT}`))
-}).catch(e => {
-  console.error('DB init feilet:', e.message)
+async function start() {
+  try {
+    console.log('Starting DB init...')
+    await initDB()
+    console.log('DB init complete, starting server...')
+    app.listen(PORT, () => console.log(`🚀 Yeeyoo backend v6.0 kjører på port ${PORT}`))
+  } catch (e) {
+    console.error('=== STARTUP CRASH ===')
+    console.error('Error:', e.message)
+    console.error('Stack:', e.stack)
+    console.error('Full error:', JSON.stringify(e, Object.getOwnPropertyNames(e), 2))
+    process.exit(1)
+  }
+}
+start()
+
+// Catch unhandled errors at module level
+process.on('uncaughtException', (e) => {
+  console.error('=== UNCAUGHT EXCEPTION ===')
+  console.error(e.stack || e)
+  process.exit(1)
+})
+process.on('unhandledRejection', (e) => {
+  console.error('=== UNHANDLED REJECTION ===')
+  console.error(e?.stack || e)
   process.exit(1)
 })
