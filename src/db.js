@@ -16,6 +16,23 @@ export async function initDB() {
     console.log('⚠️ DATABASE_URL not set or invalid')
   }
   await pool.query(`
+    -- Smart planlegger (first — no FK dependencies)
+    CREATE TABLE IF NOT EXISTS smartplan_businesses (
+      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      user_id TEXT,
+      url TEXT,
+      name TEXT,
+      description TEXT,
+      industry TEXT,
+      target_audience TEXT,
+      tone TEXT,
+      goals TEXT,
+      summary TEXT,
+      raw_data TEXT,
+      analysis JSONB,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS users (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       name TEXT NOT NULL,
@@ -157,23 +174,6 @@ export async function initDB() {
       user_agent TEXT,
       country TEXT,
       method TEXT DEFAULT 'email',
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-
-    -- Smart planlegger
-    CREATE TABLE IF NOT EXISTS smartplan_businesses (
-      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-      user_id TEXT,
-      url TEXT,
-      name TEXT,
-      description TEXT,
-      industry TEXT,
-      target_audience TEXT,
-      tone TEXT,
-      goals TEXT,
-      summary TEXT,
-      raw_data TEXT,
-      analysis JSONB,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
