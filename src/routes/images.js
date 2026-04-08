@@ -5,16 +5,14 @@ const r = Router()
 r.use(auth)
 
 function buildImagePrompt(content, platform) {
-  // Extract keywords from post content for relevance
   const clean = content.replace(/[#@\n\r]/g, ' ').replace(/\s+/g, ' ').trim()
-  const keywords = clean.substring(0, 120)
+  const keywords = clean.substring(0, 150)
 
-  const people = 'Norwegian people, faces visible, professional setting'
   const prompts = {
-    linkedin: `Confident Norwegian business professional in modern Oslo office, ${people}, presenting real estate investment data on screen, city skyline through window, sunny day, photorealistic, sharp focus, no text, no logos, 16:9. Context: ${keywords}`,
-    instagram: `Smiling young Norwegian couple touring a bright Scandinavian luxury apartment, ${people}, large windows with Oslo city view, aspirational lifestyle, natural light, warm tones, photorealistic, no text, 16:9. Context: ${keywords}`,
-    facebook: `Happy Norwegian family with children standing outside their new modern home, ${people}, sunny day, green lawn, celebrating, warm atmosphere, photorealistic, no text, 16:9. Context: ${keywords}`,
-    tiktok: `Energetic young Norwegian professional showing real estate investment app on phone to camera, ${people}, modern Oslo street background, dynamic angle, vibrant energy, photorealistic, no text, 16:9. Context: ${keywords}`,
+    linkedin: `A confident Norwegian man in his 30s wearing a navy suit, standing in a modern glass-walled Oslo office. He is presenting a real estate investment portfolio on a large wall-mounted screen showing graphs and property photos. Oslo fjord and Barcode district visible through floor-to-ceiling windows. Bright natural daylight, clean Scandinavian interior with light wood and white walls. Shot from a slight low angle, professional corporate photography style. The scene relates to: ${keywords}`,
+    instagram: `A stylish young Norwegian couple in their late 20s walking through a bright, newly renovated luxury apartment in Oslo. Minimalist Scandinavian interior with large windows overlooking the city, white oak floors, designer furniture. Golden hour sunlight streaming in. They are smiling and pointing at the view. Aspirational lifestyle photography, warm color palette, shallow depth of field. The scene relates to: ${keywords}`,
+    facebook: `A happy Norwegian family of four — parents in their 30s and two young children — standing in front of their new modern Scandinavian-style home. The house has clean lines, large windows, and a small green front garden. Bright sunny summer day in Norway, everyone is smiling. Warm, inviting atmosphere. Documentary-style photography with natural lighting. The scene relates to: ${keywords}`,
+    tiktok: `A young energetic Norwegian woman in her mid-20s, casually dressed, holding up her smartphone toward the camera showing a property investment app screen. She has a big smile and is standing on a modern Oslo street with colorful buildings and a tram in the background. Dynamic composition, slightly tilted camera angle, vibrant colors, natural outdoor lighting. The scene relates to: ${keywords}`,
   }
 
   return prompts[platform?.toLowerCase()] || prompts.linkedin
@@ -24,70 +22,52 @@ r.post('/generate', async (req, res) => {
   const { content, platform } = req.body
   if (!content) return res.status(400).json({ error: 'Innhold mangler' })
 
-  const apiKey = process.env.STABILITY_API_KEY
-  if (!apiKey) return res.status(503).json({ error: 'Stability AI ikke konfigurert' })
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) return res.status(503).json({ error: 'OpenAI API-nøkkel ikke konfigurert' })
 
   try {
     const promptText = buildImagePrompt(content, platform)
-    console.log('=== IMAGE GENERATE START ===')
+    console.log('=== DALL-E 3 IMAGE GENERATE ===')
     console.log('Platform:', platform)
-    console.log('Prompt:', promptText)
-    console.log('API Key:', apiKey ? `${apiKey.substring(0, 8)}...${apiKey.substring(apiKey.length - 4)}` : 'MISSING')
+    console.log('Prompt:', promptText.substring(0, 200))
 
-    const formData = new FormData()
-    formData.append('prompt', promptText)
-    formData.append('output_format', 'webp')
-    formData.append('aspect_ratio', '16:9')
-
-    console.log('Calling Stability AI v2beta/stable-image/generate/core ...')
-    const aiRes = await fetch('https://api.stability.ai/v2beta/stable-image/generate/core', {
+    const aiRes = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
-        'Accept': 'image/*'
+        'Content-Type': 'application/json'
       },
-      body: formData
+      body: JSON.stringify({
+        model: 'dall-e-3',
+        prompt: promptText,
+        n: 1,
+        size: '1792x1024',
+        quality: 'standard',
+        response_format: 'b64_json'
+      })
     })
 
-    console.log('Stability AI response:', {
-      status: aiRes.status,
-      statusText: aiRes.statusText,
-      contentType: aiRes.headers.get('content-type'),
-      contentLength: aiRes.headers.get('content-length'),
-      finishReason: aiRes.headers.get('finish-reason'),
-      seed: aiRes.headers.get('seed'),
-    })
+    console.log('DALL-E response status:', aiRes.status, aiRes.statusText)
 
     if (!aiRes.ok) {
       const errBody = await aiRes.text()
-      console.error('=== STABILITY AI ERROR ===')
+      console.error('=== DALL-E ERROR ===')
       console.error('Status:', aiRes.status, aiRes.statusText)
-      console.error('Headers:', JSON.stringify(Object.fromEntries(aiRes.headers.entries())))
-      console.error('Body:', errBody)
-      throw new Error(`Stability AI ${aiRes.status}: ${errBody.substring(0, 200)}`)
+      console.error('Body:', errBody.substring(0, 500))
+      throw new Error(`DALL-E ${aiRes.status}: ${errBody.substring(0, 200)}`)
     }
 
-    const contentType = aiRes.headers.get('content-type') || ''
-
-    let dataUrl
-    if (contentType.includes('application/json')) {
-      const json = await aiRes.json()
-      console.log('Got JSON response, keys:', Object.keys(json))
-      const b64 = json.image || json.artifacts?.[0]?.base64
-      if (!b64) {
-        console.error('No image data in JSON:', JSON.stringify(json).substring(0, 500))
-        throw new Error('Ingen bildedata i respons')
-      }
-      dataUrl = `data:image/webp;base64,${b64}`
-      console.log('Image from JSON, base64 length:', b64.length)
-    } else {
-      const buffer = Buffer.from(await aiRes.arrayBuffer())
-      dataUrl = `data:image/webp;base64,${buffer.toString('base64')}`
-      console.log('Image from binary, size:', buffer.length, 'bytes')
+    const json = await aiRes.json()
+    const b64 = json.data?.[0]?.b64_json
+    if (!b64) {
+      console.error('No image in DALL-E response:', JSON.stringify(json).substring(0, 500))
+      throw new Error('Ingen bildedata i respons')
     }
 
-    console.log('=== IMAGE GENERATE SUCCESS ===')
-    res.json({ image: dataUrl, format: 'webp' })
+    const dataUrl = `data:image/png;base64,${b64}`
+    console.log('=== DALL-E SUCCESS === base64 length:', b64.length)
+
+    res.json({ image: dataUrl, format: 'png' })
   } catch (e) {
     console.error('Image generate error:', e.stack || e.message)
     res.status(500).json({ error: e.message })
