@@ -6,16 +6,10 @@ r.use(auth)
 
 function buildImagePrompt(content, platform) {
   const clean = content.replace(/[#@\n\r]/g, ' ').replace(/\s+/g, ' ').trim()
-  const keywords = clean.substring(0, 150)
+  const postText = clean.substring(0, 300)
+  const p = platform?.toLowerCase() || 'linkedin'
 
-  const prompts = {
-    linkedin: `Aerial view of Oslo fjord at sunrise, dramatic Norwegian landscape, modern city skyline in background, golden hour light, photorealistic nature photography. Context: ${keywords}`,
-    instagram: `Beautiful Norwegian mountain landscape with a lake reflection, sunny day, green hills, dramatic sky, travel photography, photorealistic. Context: ${keywords}`,
-    facebook: `Cozy Norwegian cabin by a fjord, warm lights inside, snowy mountains in background, peaceful winter scene, photorealistic. Context: ${keywords}`,
-    tiktok: `Norwegian northern lights aurora borealis over snowy landscape, vivid green and purple colors, photorealistic night photography. Context: ${keywords}`,
-  }
-
-  return prompts[platform?.toLowerCase()] || prompts.linkedin
+  return `Professional social media photo for ${p}, ${postText}, ultra high quality, sharp, vibrant colors, modern aesthetic, 4K, no text, no watermarks, photorealistic`
 }
 
 r.post('/generate', async (req, res) => {
