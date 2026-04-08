@@ -154,7 +154,10 @@ export async function initDB() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
-    -- Smart planlegger: business analyses
+  `)
+
+  // Smart planlegger tables (separate query — FK needs users table to exist first)
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS smartplan_businesses (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -166,8 +169,8 @@ export async function initDB() {
       analysis JSONB,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
-
-    -- Smart planlegger: link posts to analysed businesses
+  `)
+  await pool.query(`
     ALTER TABLE posts ADD COLUMN IF NOT EXISTS smartplan_business_id UUID REFERENCES smartplan_businesses(id) ON DELETE SET NULL;
   `)
 
