@@ -161,7 +161,7 @@ export async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS smartplan_businesses (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      user_id TEXT,
       url TEXT NOT NULL,
       name TEXT,
       industry TEXT,
