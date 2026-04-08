@@ -156,28 +156,30 @@ export async function initDB() {
 
   `)
 
-  // Smart planlegger tables (separate queries so FKs resolve correctly)
+  // Smart planlegger table — standalone, no FKs, TEXT ids to match schema
   console.log('  Creating smartplan_businesses...')
   await pool.query(`
     CREATE TABLE IF NOT EXISTS smartplan_businesses (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
       user_id TEXT,
-      url TEXT NOT NULL,
+      url TEXT,
       name TEXT,
-      industry TEXT,
-      summary TEXT,
-      raw_data TEXT,
+      description TEXT,
       analysis JSONB,
       created_at TIMESTAMPTZ DEFAULT NOW()
-    );
+    )
   `)
+  console.log('  smartplan_businesses created OK')
+
+  // Add smartplan_business_id column to posts
   console.log('  Adding smartplan_business_id to posts...')
   await pool.query(`
     DO $$ BEGIN
-      ALTER TABLE posts ADD COLUMN smartplan_business_id UUID REFERENCES smartplan_businesses(id) ON DELETE SET NULL;
+      ALTER TABLE posts ADD COLUMN smartplan_business_id TEXT;
     EXCEPTION WHEN duplicate_column THEN NULL;
     END $$;
   `)
+  console.log('  smartplan_business_id added OK')
 
   // Bootstrap admin user
   const ADMIN_EMAIL = 'heljarprebensen@gmail.com'
