@@ -80,7 +80,7 @@ async function findOrCreateOAuthUser({ sub, email, name, provider }) {
   // 3. Create new
   const col = provider === 'vipps' ? 'vipps_sub' : 'google_sub'
   const { rows } = await pool.query(
-    `INSERT INTO users (name, email, ${col}, auth_provider) VALUES ($1,$2,$3,$4) RETURNING *`,
+    `INSERT INTO users (id, name, email, ${col}, auth_provider, email_verified) VALUES (gen_random_uuid(),$1,$2,$3,$4,true) RETURNING *`,
     [name, email, sub, provider]
   )
   return rows[0]
@@ -98,8 +98,8 @@ r.post('/register', async (req, res) => {
     const hash = await bcrypt.hash(password, 10)
     const verifyToken = crypto.randomBytes(32).toString('hex')
     const { rows } = await pool.query(
-      `INSERT INTO users (name, email, password_hash, auth_provider, email_verified, verify_token)
-       VALUES ($1,$2,$3,'email',false,$4) RETURNING id, name, email`,
+      `INSERT INTO users (id, name, email, password_hash, auth_provider, email_verified, verify_token)
+       VALUES (gen_random_uuid(),$1,$2,$3,'email',false,$4) RETURNING id, name, email`,
       [name, email, hash, verifyToken]
     )
     // Send verification email (non-blocking)
@@ -343,8 +343,8 @@ r.get('/google/callback', async (req, res) => {
     logLogin(user, req, 'google')
     res.redirect(`${frontend}?oauth_token=${signToken(user)}&oauth_name=${encodeURIComponent(user.name)}`)
   } catch (e) {
-    console.error('Google error:', e)
-    res.redirect(`${frontend}?error=${e.message==='invite_only'?'invite_only':'google_server'}`)
+    console.error('Google OAuth error:', e.stack || e.message)
+    res.redirect(`${frontend}?error=${e.message==='invite_only'?'invite_only':'google_server'}&detail=${encodeURIComponent(e.message)}`)
   }
 })
 
