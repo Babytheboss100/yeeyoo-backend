@@ -84,8 +84,8 @@ r.post('/generate', async (req, res) => {
           if (result.error) throw new Error(result.error)
 
           const { rows } = await pool.query(
-            `INSERT INTO posts (user_id, project_id, platform, content, status)
-             VALUES ($1,$2,$3,$4,'pending') RETURNING *`,
+            `INSERT INTO posts (id, user_id, project_id, platform, content, status)
+             VALUES (gen_random_uuid(),$1,$2,$3,$4,'pending') RETURNING *`,
             [req.user.id, projectId || null, platform, result.text]
           )
           return { ...rows[0], ai_model: modelId }

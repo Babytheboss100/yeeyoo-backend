@@ -45,8 +45,8 @@ r.post('/generate', async (req, res) => {
     const saved = []
     for (const p of posts) {
       const { rows } = await pool.query(
-        `INSERT INTO posts (user_id, platform, content, hashtags, status, ai_model)
-         VALUES ($1, $2, $3, $4, 'pending', 'gemini') RETURNING *`,
+        `INSERT INTO posts (id, user_id, platform, content, hashtags, status, ai_model)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, 'pending', 'gemini') RETURNING *`,
         [req.user.id, p.platform, p.content, p.hashtags || '']
       )
       saved.push(rows[0])

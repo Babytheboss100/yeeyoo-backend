@@ -107,13 +107,15 @@ r.post('/generate-month', async (req, res) => {
 
   try {
     // Fetch the business analysis
+    console.log('generate-month: fetching business', businessId, 'for user', req.user.id)
     const { rows: bizRows } = await pool.query(
       'SELECT * FROM smartplan_businesses WHERE id=$1 AND user_id=$2',
       [businessId, req.user.id]
     )
     if (!bizRows.length) return res.status(404).json({ error: 'Bedrift ikke funnet' })
     const biz = bizRows[0]
-    const analysis = typeof biz.analysis === 'string' ? JSON.parse(biz.analysis) : biz.analysis
+    const analysis = typeof biz.analysis === 'string' ? JSON.parse(biz.analysis) : (biz.analysis || {})
+    console.log('generate-month: business found:', biz.name, '| analysis keys:', Object.keys(analysis))
 
     // Calculate post dates for the month
     const targetYear = year || new Date().getFullYear()
@@ -199,20 +201,28 @@ Generer nøyaktig ${selectedDays.length} innlegg. Varier innhold, pilarer og pla
     })
 
     if (!claudeRes.ok) {
-      const err = await claudeRes.json()
-      throw new Error(err.error?.message || 'Generering feilet')
+      const errBody = await claudeRes.text()
+      console.error('generate-month: Claude API error:', claudeRes.status, errBody)
+      throw new Error('Claude API feilet: ' + claudeRes.status)
     }
 
     const claudeData = await claudeRes.json()
-    const genText = claudeData.content[0].text
+    const genText = claudeData.content?.[0]?.text
+    if (!genText) {
+      console.error('generate-month: empty Claude response:', JSON.stringify(claudeData))
+      throw new Error('Tom respons fra Claude')
+    }
+    console.log('generate-month: Claude returned', genText.length, 'chars')
 
     let generatedPosts
     try {
       const jsonMatch = genText.match(/```(?:json)?\s*([\s\S]*?)```/)
       generatedPosts = JSON.parse(jsonMatch ? jsonMatch[1].trim() : genText.trim())
-    } catch {
+    } catch (parseErr) {
+      console.error('generate-month: JSON parse failed:', parseErr.message, '| raw:', genText.substring(0, 500))
       throw new Error('Kunne ikke tolke genererte innlegg')
     }
+    console.log('generate-month: parsed', generatedPosts.length, 'posts')
 
     // Save posts to database
     const timeSlots = ['09:00', '12:00', '15:00', '18:00']
@@ -226,8 +236,8 @@ Generer nøyaktig ${selectedDays.length} innlegg. Varier innhold, pilarer og pla
       const scheduledAt = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}T${timeSlot}:00`
 
       const { rows } = await pool.query(
-        `INSERT INTO posts (user_id, platform, content, status, scheduled_at, smartplan_business_id, ai_model)
-         VALUES ($1, $2, $3, 'pending', $4, $5, 'claude') RETURNING *`,
+        `INSERT INTO posts (id, user_id, platform, content, status, scheduled_at, smartplan_business_id, ai_model)
+         VALUES (gen_random_uuid(), $1, $2, $3, 'pending', $4, $5, 'claude') RETURNING *`,
         [req.user.id, platform, post.content, scheduledAt, businessId]
       )
       savedPosts.push(rows[0])
