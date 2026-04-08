@@ -156,6 +156,19 @@ export async function initDB() {
 
   `)
 
+  // Drop all user_id FK constraints — users.id is TEXT but FKs expect UUID
+  console.log('  Dropping user_id FK constraints...')
+  await pool.query(`ALTER TABLE projects DROP CONSTRAINT IF EXISTS projects_user_id_fkey`)
+  await pool.query(`ALTER TABLE posts DROP CONSTRAINT IF EXISTS posts_user_id_fkey`)
+  await pool.query(`ALTER TABLE subscriptions DROP CONSTRAINT IF EXISTS subscriptions_user_id_fkey`)
+  await pool.query(`ALTER TABLE oauth_tokens DROP CONSTRAINT IF EXISTS oauth_tokens_user_id_fkey`)
+  await pool.query(`ALTER TABLE team_members DROP CONSTRAINT IF EXISTS team_members_user_id_fkey`)
+  await pool.query(`ALTER TABLE team_members DROP CONSTRAINT IF EXISTS team_members_invited_by_fkey`)
+  await pool.query(`ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_user_id_fkey`)
+  await pool.query(`ALTER TABLE seo_profiles DROP CONSTRAINT IF EXISTS seo_profiles_user_id_fkey`)
+  await pool.query(`ALTER TABLE login_logs DROP CONSTRAINT IF EXISTS login_logs_user_id_fkey`)
+  console.log('  FK constraints dropped OK')
+
   // Smart planlegger table — definitive version with ALL columns
   console.log('  Creating smartplan_businesses...')
   await pool.query(`
