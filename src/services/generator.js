@@ -8,12 +8,36 @@ export const AI_MODELS = {
 }
 
 const PLATFORM_RULES = {
-  linkedin:  { maxChars:3000, style:'Profesjonell men personlig. Sterk hook. Linjeskift. CTA. Hashtags på slutten.', format:'Hook\n\nKropp (3-5 avsnitt)\n\nCTA\n\n#hashtags' },
-  facebook:  { maxChars:2000, style:'Engasjerende og konversasjonell. Kortere avsnitt. Still et spørsmål.', format:'Hook → Kropp → Spørsmål/CTA' },
-  instagram: { maxChars:2200, style:'Visuelt og inspirerende. Første linje avgjørende. Moderate emojis. Mange hashtags.', format:'Sterk første linje\n\nKort kropp\n\n.\n.\n.\n#hashtags (15-20)' },
-  twitter:   { maxChars:280,  style:'Direkte og klar. Én sterk påstand. Maks 2 hashtags.', format:'Maks 280 tegn.' },
-  tiktok:    { maxChars:2200, style:'Energisk, underholdende og autentisk. Hook i første setning. Trendy språk. Emojis. Oppfordring til å følge/kommentere.', format:'Hook → Kort kropp → CTA (følg, kommenter, del) → #hashtags (5-10 trending)' },
-  email:     { maxChars:5000, style:'Profesjonell e-post. Tydelig emne-linje. Personlig og verdifull. Sterk CTA. Kortfattet men komplett.', format:'EMNE: [emne-linje]\n\nHei [Navn],\n\n[Kropp - 2-4 avsnitt]\n\n[CTA-knapp tekst]\n\nMvh,\n[Avsender]' }
+  linkedin: {
+    maxChars:3000,
+    style:'Profesjonell og innsiktsdrevet tone. 200-300 ord. INGEN emojis. Start med en sterk innsikt eller kontraintuitiv påstand. Bruk korte avsnitt med linjeskift. Del personlig erfaring eller data. Avslutt med en refleksjon eller CTA. 3-5 relevante hashtags på slutten.',
+    format:'Sterk innsikt/hook (1 setning)\n\n[Avsnitt 1 - kontekst]\n\n[Avsnitt 2 - hovedpoeng med data/erfaring]\n\n[Avsnitt 3 - lærdom/takeaway]\n\n[CTA - spørsmål til leseren]\n\n#hashtag1 #hashtag2 #hashtag3'
+  },
+  facebook: {
+    maxChars:2000,
+    style:'Konversasjonell og varm tone. 100-200 ord. Maks 1-2 emojis. Skriv som om du snakker med en venn. Bruk korte setninger. Avslutt ALLTID med et spørsmål som inviterer til kommentar.',
+    format:'Hook (kort, personlig)\n\nKropp (2-3 korte avsnitt)\n\nSpørsmål til leserne?'
+  },
+  instagram: {
+    maxChars:2200,
+    style:'Visuelt og inspirerende. Maks 150 ord i selve teksten. 3-5 emojis strategisk plassert. Første linje MÅ fange oppmerksomhet — dette er det eneste folk ser før "les mer". Inkluder CTA (lagre, del, kommenter). 15-20 hashtags på slutten etter punktlinje.',
+    format:'🔥 Sterk første linje (hook)\n\nKort kropp (3-4 setninger maks)\n\nCTA (Lagre dette! / Tag en venn / Kommenter)\n\n.\n.\n.\n#hashtag1 #hashtag2 ... (15-20 stk)'
+  },
+  twitter: {
+    maxChars:280,
+    style:'Kun ÉN idé. Punchy og direkte. Maks 280 tegn totalt. Ingen fluff. Sterk mening eller overraskende innsikt. Maks 1-2 hashtags. Kan bruke 1 emoji for effekt.',
+    format:'Én sterk setning. Maks 280 tegn.'
+  },
+  tiktok: {
+    maxChars:300,
+    style:'Ultra-kort hook i første setning (fang oppmerksomhet på 1 sekund). Maks 100 ord. Trendy og autentisk språk. Bruk emojis. Oppfordre til å følge, kommentere, eller dele. Snakk direkte til seeren.',
+    format:'HOOK: [1 setning som stopper scrolling]\n\n[Kort kropp - maks 3 setninger]\n\n[CTA - følg for mer / kommenter X / del med en venn]\n\n#trending #hashtags (5-8)'
+  },
+  email: {
+    maxChars:5000,
+    style:'Profesjonell men personlig e-post. Tydelig emne-linje som skaper nysgjerrighet (maks 50 tegn). Personlig hilsen. Verdifull kropp i 2-4 korte avsnitt. Én tydelig CTA-knapp. Kort og respektfull avslutning.',
+    format:'EMNE: [Kort, nysgjerrighetsskapende emnelinje]\n\nHei [Navn],\n\n[Avsnitt 1 - personlig hook]\n\n[Avsnitt 2 - verdi/innhold]\n\n[Avsnitt 3 - CTA med link]\n\nMvh,\n[Avsender]'
+  }
 }
 
 export const TEMPLATES = [
