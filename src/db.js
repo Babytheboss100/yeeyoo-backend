@@ -136,6 +136,9 @@ export async function initDB() {
     -- Admin flag
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false;
 
+    -- Referral code on users
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code VARCHAR(20) UNIQUE;
+
     -- Invite whitelist (closed beta)
     CREATE TABLE IF NOT EXISTS invite_whitelist (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -163,6 +166,16 @@ export async function initDB() {
       action_checklist JSONB DEFAULT '[]',
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    -- Referrals / Affiliate
+    CREATE TABLE IF NOT EXISTS referrals (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      referrer_id TEXT NOT NULL,
+      referred_id TEXT NOT NULL,
+      commission DECIMAL(10,2) DEFAULT 0,
+      status VARCHAR(20) DEFAULT 'pending',
+      created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
     -- Login tracking
