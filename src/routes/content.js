@@ -107,26 +107,18 @@ r.post('/generate', async (req, res) => {
   }
 })
 
-
 // POST generate image with Pollinations.ai (gratis)
 r.post('/generate-image', async (req, res) => {
   const { text, projectId } = req.body
   if (!text) return res.status(400).json({ error: 'Mangler tekst' })
   try {
-    // Get project context for better image generation
     let project = null
     if (projectId) {
       const { rows } = await pool.query('SELECT * FROM projects WHERE id=$1 AND user_id=$2', [projectId, req.user.id])
       project = rows[0]
     }
-
     const imagePrompt = generateImagePrompt(text, project)
-    // Keep URL simple — Pollinations 502s on width/height params with many prompts
-    const cleanPrompt = imagePrompt
-      .replace(/[^\w\s]/g, '')  // only letters, numbers, spaces
-      .replace(/\s+/g, ' ')     // collapse whitespace
-      .trim()
-      .substring(0, 100)        // keep URL short
+    const cleanPrompt = imagePrompt.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim().substring(0, 100)
     const encoded = encodeURIComponent(cleanPrompt)
     const seed = Date.now() % 100000
     const url = `https://image.pollinations.ai/prompt/${encoded}?nologo=true&seed=${seed}`
@@ -134,6 +126,24 @@ r.post('/generate-image', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
+})
+
+// GET daily ideas
+r.get('/daily-ideas', async (req, res) => {
+  const ideas = [
+    {title:'Mythbuster Monday',desc:'Avkreft en vanlig myte i bransjen din med fakta og tall.',type:'mythbuster'},
+    {title:'Kundehistorie',desc:'Del en ekte suksesshistorie fra en fornøyd kunde.',type:'testimonial'},
+    {title:'Behind the Scenes',desc:'Vis hva som skjer bak kulissene i bedriften.',type:'features'},
+    {title:'Statistikk-post',desc:'Del en overraskende statistikk relevant for målgruppen.',type:'statistics'},
+    {title:'Tips & Triks',desc:'Del 3 praktiske tips publikummet kan bruke med en gang.',type:'problem-solution'},
+    {title:'Før vs. Etter',desc:'Vis en transformasjon — resultat av produktet/tjenesten din.',type:'before-after'},
+    {title:'FAQ Friday',desc:'Svar på det vanligste spørsmålet du får fra kunder.',type:'faq'},
+    {title:'Bransjetrend',desc:'Kommenter en aktuell trend og hva den betyr for kundene dine.',type:'general'},
+    {title:'Teamet bak',desc:'Presenter et teammedlem og hva de jobber med.',type:'features'},
+  ]
+  const doy = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86400000)
+  const daily = [0,1,2].map(i => ideas[(doy + i * 3) % ideas.length])
+  res.json(daily)
 })
 
 // GET all posts (queue + history)
