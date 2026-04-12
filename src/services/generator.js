@@ -41,14 +41,27 @@ const PLATFORM_RULES = {
 }
 
 export const TEMPLATES = [
-  { id:'customer_acquisition', label:'Kundeakkvisisjon',     emoji:'🎯', description:'Tiltrekk nye kunder',               prompt:'Skriv innhold som rekrutterer nye kunder. Fremhev verdiforslag og fordeler. Tydelig CTA.' },
-  { id:'product_launch',       label:'Produktlansering',     emoji:'🚀', description:'Annonsér nytt produkt/tjeneste',    prompt:'Annonsér lansering av nytt produkt/tjeneste. Skap begeistring og urgency. CTA: prøv nå.' },
-  { id:'milestone',            label:'Milepæl / suksess',    emoji:'🏆', description:'Del en milepæl',                   prompt:'Del en viktig milepæl. Bruk konkrete tall. Takk kunder. Bygg tillit og momentum.' },
-  { id:'educational',          label:'Utdanning / tips',     emoji:'📚', description:'Del kunnskap og ekspertise',        prompt:'Lag utdannende innhold med verdi for målgruppen. Posisjonér som ekspert. Ingen hard selg.' },
-  { id:'trust_builder',        label:'Tillit & troverdighet', emoji:'🛡️', description:'Bygg tillit og merkevare',         prompt:'Skriv innhold som bygger tillit. Fremhev erfaring, resultater, anerkjennelser.' },
-  { id:'engagement',           label:'Engasjement',          emoji:'💬', description:'Driv interaksjon og diskusjon',     prompt:'Skriv innhold som skaper kommentarer. Still spørsmål, del meninger, inviter til diskusjon.' },
-  { id:'offer',                label:'Tilbud / kampanje',    emoji:'🎁', description:'Promoter et tilbud',                prompt:'Promoter et spesielt tilbud. Skap urgency. Tydelig verdi og enkel CTA.' },
-  { id:'custom',               label:'Egendefinert',         emoji:'✏️', description:'Skriv din egen instruksjon',        prompt:'' }
+  { id:'customer_acquisition', label:'Kundeakkvisisjon', emoji:'🎯', description:'Tiltrekk nye kunder',
+    prompt:'Skriv innhold som rekrutterer nye kunder. Fremhev verdiforslag og fordeler. Tydelig CTA. Bruk PROBLEM-SOLUTION struktur: Start med et problem målgruppen kjenner seg igjen i → vis at du forstår frustrasjonen → presenter løsningen → tydelig CTA.' },
+  { id:'product_launch', label:'Produktlansering', emoji:'🚀', description:'Annonsér nytt produkt/tjeneste',
+    prompt:'Annonsér lansering av nytt produkt/tjeneste. BEFORE/AFTER struktur: Vis HVORDAN ting var FØR → hva som endres NÅ → konkrete fordeler → urgency (begrenset tilbud/tidlig tilgang). Skap begeistring. CTA: prøv nå / meld deg på.' },
+  { id:'milestone', label:'Milepæl / suksess', emoji:'🏆', description:'Del en milepæl',
+    prompt:'Del en viktig milepæl. STATISTICS struktur: Start med det imponerende tallet → gi kontekst (hva det betyr) → takk kunder/team → del hva som kommer neste → CTA. Bruk konkrete tall og prosenter.' },
+  { id:'educational', label:'Utdanning / tips', emoji:'📚', description:'Del kunnskap og ekspertise',
+    prompt:'Lag utdannende innhold. FAQ/TIPS struktur: Start med et vanlig spørsmål eller misforståelse → gi tydelig, verdiladet svar → bruk nummererte steg eller kulepunkter → avslutt med en bonus-innsikt. Posisjonér som ekspert uten hard selg.' },
+  { id:'trust_builder', label:'Tillit & troverdighet', emoji:'🛡️', description:'Bygg tillit og merkevare',
+    prompt:'Skriv innhold som bygger tillit. TESTIMONIAL struktur: Del en ekte historie eller kundeerfaring → hva var situasjonen FØR → hva skjedde ETTER → konkrete resultater med tall → lærdom andre kan ta med seg. Autentisk tone.' },
+  { id:'engagement', label:'Engasjement', emoji:'💬', description:'Driv interaksjon og diskusjon',
+    prompt:'Skriv innhold som skaper kommentarer. MYTHBUSTER struktur: Start med en kontrovers eller vanlig myte ("De fleste tror at...") → avkreft med fakta og logikk → del din egen erfaring → avslutt med et åpent spørsmål som inviterer til debatt.' },
+  { id:'offer', label:'Tilbud / kampanje', emoji:'🎁', description:'Promoter et tilbud',
+    prompt:'Promoter et tilbud. NEGATIVE HOOK struktur: Start med hva folk gjør FEIL eller hva de MISTER ved å ikke handle ("Slutt å kaste penger på...") → presenter tilbudet som løsningen → tydelig verdi og besparelse → urgency (frist/begrenset) → enkel CTA.' },
+  { id:'faq', label:'FAQ', emoji:'❓', description:'Svar på vanlige spørsmål',
+    prompt:'FAQ-innhold: Velg det vanligste spørsmålet bransjen din får → formuler det som "folk spør meg alltid..." → gi et kort, presist og verdifullt svar → legg til 1-2 bonus-tips de ikke forventet → inviter til flere spørsmål.' },
+  { id:'before_after', label:'Før & Etter', emoji:'🔄', description:'Vis transformasjon og resultater',
+    prompt:'BEFORE/AFTER innhold: Beskriv NØYAKTIG hvordan situasjonen var FØR (smertepunkter, tall, frustrasjon) → hva som ble endret/implementert → beskriv NØYAKTIG hvordan det er ETTER (resultater, tall, forbedring) → lærdom → CTA.' },
+  { id:'mythbuster', label:'Mythbuster', emoji:'💥', description:'Avkreft bransjemyter',
+    prompt:'MYTHBUSTER innhold: Start med en sterk påstand: "MYTE: [vanlig oppfatning]" → forklar hvorfor dette er feil med data/logikk → del "SANNHETEN: [riktig innsikt]" → gi praktisk råd basert på sannheten → inviter til diskusjon.' },
+  { id:'custom', label:'Egendefinert', emoji:'✏️', description:'Skriv din egen instruksjon', prompt:'' }
 ]
 
 function buildPrompts({ project, templateId, customPrompt, platform, extraContext }) {
