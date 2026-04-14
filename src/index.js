@@ -1,7 +1,6 @@
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
-import rateLimit from 'express-rate-limit'
 import dotenv from 'dotenv'
 dotenv.config()
 
@@ -17,21 +16,49 @@ import seoRoutes from './routes/seo.js'
 import smartplanRoutes from './routes/smartplan.js'
 import autopilotRoutes from './routes/autopilot.js'
 import imageRoutes from './routes/images.js'
+import affiliateRoutes from './routes/affiliate.js'
 import campaignRoutes from './routes/campaigns.js'
 import { auth } from './middleware/auth.js'
+import { corsOptions, generalLimiter, generateLimiter, suspiciousActivityLogger } from './middleware/security.js'
+import { trimStrings } from './middleware/sanitize.js'
 
 const app = express()
 const PORT = process.env.PORT || 3001
 
-// ─── Middleware ───────────────────────────────────────────────────────────────
-app.use(helmet({ crossOriginResourcePolicy: false }))
-app.use(cors({ origin: true, credentials: true }))
+// ─── Security middleware ─────────────────────────────────────────────────────
+app.use(helmet({
+  crossOriginResourcePolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      frameSrc: ["'none'"]
+    }
+  },
+  hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
+}))
+app.use(cors(corsOptions))
 app.set('trust proxy', 1)
+
+// Suspicious activity logging (before body parsing)
+app.use(suspiciousActivityLogger)
 
 // Webhook trenger raw body — må være FØR express.json()
 app.use('/api/billing/webhook', express.raw({ type: 'application/json' }))
-app.use(express.json())
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 200 }))
+app.use(express.json({ limit: '1mb' }))
+app.use(trimStrings)
+
+// Rate limiting: 100 req / 15 min globally
+app.use(generalLimiter)
+
+// Stricter rate limit on content generation: 10 req / hour
+app.use('/api/content/generate', generateLimiter)
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes)
@@ -45,6 +72,7 @@ app.use('/api/seo', seoRoutes)
 app.use('/api/smartplan', smartplanRoutes)
 app.use('/api/autopilot', autopilotRoutes)
 app.use('/api/images', imageRoutes)
+app.use('/api/affiliate', affiliateRoutes)
 app.use('/api/campaigns', campaignRoutes)
 
 // ─── Onboarding ───────────────────────────────────────────────────────────────
@@ -103,6 +131,27 @@ app.post('/api/admin/set-admin', auth, async (req, res) => {
     )
     if (!rows[0]) return res.status(404).json({ error: 'Bruker ikke funnet' })
     res.json(rows[0])
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ─── Admin: Waitlist ──────────────────────────────────────────────────────────
+app.get('/api/admin/waitlist', auth, async (req, res) => {
+  try {
+    const { rows: caller } = await pool.query('SELECT is_admin FROM users WHERE id=$1', [req.user.id])
+    const { rows: first } = await pool.query('SELECT id FROM users ORDER BY created_at LIMIT 1')
+    if (!caller[0]?.is_admin && req.user.id !== first[0]?.id) {
+      return res.status(403).json({ error: 'Kun admin' })
+    }
+
+    const { rows } = await pool.query(
+      'SELECT * FROM invite_whitelist ORDER BY created_at DESC'
+    )
+    const { rows: total } = await pool.query(
+      'SELECT COUNT(*) as count, COUNT(*) FILTER (WHERE approved=true) as approved, COUNT(*) FILTER (WHERE approved=false) as pending FROM invite_whitelist'
+    )
+    res.json({ entries: rows, stats: total[0] })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }

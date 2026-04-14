@@ -4,7 +4,8 @@ import jwt from 'jsonwebtoken'
 import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
-import { sendVerificationEmail } from '../services/email.js'
+import { sendEmail, sendVerificationEmail } from '../services/email.js'
+import { validateRegister, validateLogin } from '../middleware/sanitize.js'
 
 const r = Router()
 
@@ -88,7 +89,7 @@ async function findOrCreateOAuthUser({ sub, email, name, provider }) {
 
 // ─── EMAIL/PASSWORD ───────────────────────────────────────────────────────────
 
-r.post('/register', async (req, res) => {
+r.post('/register', validateRegister, async (req, res) => {
   const { name, email, password } = req.body
   if (!name || !email || !password) return res.status(400).json({ error: 'Mangler felt' })
   try {
@@ -115,7 +116,7 @@ r.post('/register', async (req, res) => {
   }
 })
 
-r.post('/login', async (req, res) => {
+r.post('/login', validateLogin, async (req, res) => {
   const { email, password } = req.body
   try {
     if (!await checkWhitelist(email)) {
@@ -371,6 +372,31 @@ r.post('/request-access', async (req, res) => {
        ON CONFLICT (email) DO UPDATE SET note=$2`,
       [email, note]
     )
+
+    // Notify admin about new beta request
+    sendEmail(
+      'heljarprebensen@gmail.com',
+      `Ny beta-søknad — ${email}`,
+      `<!DOCTYPE html>
+      <html><head><meta charset="utf-8"></head>
+      <body style="margin:0;padding:0;background:#050714;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 20px;">
+          <tr><td align="center">
+            <table width="520" cellpadding="0" cellspacing="0" style="background:linear-gradient(145deg,rgba(12,17,48,.98),rgba(8,12,30,.98));border:1px solid rgba(255,255,255,.13);border-radius:16px;overflow:hidden;">
+              <tr><td style="padding:32px 40px;">
+                <div style="font-size:22px;font-weight:800;color:#f0f4ff;margin-bottom:16px;">Ny beta-søknad</div>
+                <p style="color:#8892b0;font-size:15px;margin-bottom:8px;"><strong style="color:#c5cee0;">E-post:</strong> ${email}</p>
+                <p style="color:#8892b0;font-size:15px;margin-bottom:24px;"><strong style="color:#c5cee0;">Melding:</strong> ${message ? message.substring(0, 500) : '<em>Ingen melding</em>'}</p>
+                <a href="${process.env.FRONTEND_URL || 'https://app.yeeyoo.no'}/admin" style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#2d5be3,#7c3aed);color:#fff;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px;">Administrer venteliste →</a>
+                <hr style="border:none;border-top:1px solid rgba(255,255,255,.07);margin:24px 0;">
+                <p style="color:#4a5278;font-size:11px;">Yeeyoo admin-varsel</p>
+              </td></tr>
+            </table>
+          </td></tr>
+        </table>
+      </body></html>`
+    ).catch(e => console.error('Admin notification failed:', e.message))
+
     res.json({ message: 'Takk! Vi sender deg en invitasjon når plassen din er klar.' })
   } catch (e) {
     res.status(500).json({ error: e.message })

@@ -15,24 +15,33 @@ export async function initDB() {
   } catch {
     console.log('⚠️ DATABASE_URL not set or invalid')
   }
-  await pool.query(`
-    -- Smart planlegger (first — no FK dependencies)
-    CREATE TABLE IF NOT EXISTS smartplan_businesses (
-      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-      user_id TEXT,
-      url TEXT,
-      name TEXT,
-      description TEXT,
-      industry TEXT,
-      target_audience TEXT,
-      tone TEXT,
-      goals TEXT,
-      summary TEXT,
-      raw_data TEXT,
-      analysis JSONB,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    );
+  // ─── Block 1: smartplan_businesses (independent, no FK deps) ────────────────
+  try {
+    console.log('Creating smartplan_businesses table...')
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS smartplan_businesses (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        user_id TEXT,
+        url TEXT,
+        name TEXT,
+        description TEXT,
+        industry TEXT,
+        target_audience TEXT,
+        tone TEXT,
+        goals TEXT,
+        summary TEXT,
+        raw_data TEXT,
+        analysis JSONB,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `)
+    console.log('smartplan_businesses table ready!')
+  } catch (e) {
+    console.error('smartplan_businesses CREATE failed:', e.message)
+  }
 
+  // ─── Block 2: Core tables ─────────────────────────────────────────────────
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       name TEXT NOT NULL,
@@ -136,6 +145,9 @@ export async function initDB() {
     -- Admin flag
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false;
 
+    -- Referral code on users
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code VARCHAR(20) UNIQUE;
+
     -- Invite whitelist (closed beta)
     CREATE TABLE IF NOT EXISTS invite_whitelist (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -163,6 +175,16 @@ export async function initDB() {
       action_checklist JSONB DEFAULT '[]',
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    -- Referrals / Affiliate
+    CREATE TABLE IF NOT EXISTS referrals (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      referrer_id TEXT NOT NULL,
+      referred_id TEXT NOT NULL,
+      commission DECIMAL(10,2) DEFAULT 0,
+      status VARCHAR(20) DEFAULT 'pending',
+      created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
     -- Login tracking
