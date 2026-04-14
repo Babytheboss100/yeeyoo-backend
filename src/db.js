@@ -15,24 +15,33 @@ export async function initDB() {
   } catch {
     console.log('⚠️ DATABASE_URL not set or invalid')
   }
-  await pool.query(`
-    -- Smart planlegger (first — no FK dependencies)
-    CREATE TABLE IF NOT EXISTS smartplan_businesses (
-      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-      user_id TEXT,
-      url TEXT,
-      name TEXT,
-      description TEXT,
-      industry TEXT,
-      target_audience TEXT,
-      tone TEXT,
-      goals TEXT,
-      summary TEXT,
-      raw_data TEXT,
-      analysis JSONB,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    );
+  // ─── Block 1: smartplan_businesses (independent, no FK deps) ────────────────
+  try {
+    console.log('Creating smartplan_businesses table...')
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS smartplan_businesses (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        user_id TEXT,
+        url TEXT,
+        name TEXT,
+        description TEXT,
+        industry TEXT,
+        target_audience TEXT,
+        tone TEXT,
+        goals TEXT,
+        summary TEXT,
+        raw_data TEXT,
+        analysis JSONB,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `)
+    console.log('smartplan_businesses table ready!')
+  } catch (e) {
+    console.error('smartplan_businesses CREATE failed:', e.message)
+  }
 
+  // ─── Block 2: Core tables ─────────────────────────────────────────────────
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       name TEXT NOT NULL,
