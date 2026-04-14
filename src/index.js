@@ -134,6 +134,27 @@ app.post('/api/admin/set-admin', auth, async (req, res) => {
   }
 })
 
+// ─── Admin: Waitlist ──────────────────────────────────────────────────────────
+app.get('/api/admin/waitlist', auth, async (req, res) => {
+  try {
+    const { rows: caller } = await pool.query('SELECT is_admin FROM users WHERE id=$1', [req.user.id])
+    const { rows: first } = await pool.query('SELECT id FROM users ORDER BY created_at LIMIT 1')
+    if (!caller[0]?.is_admin && req.user.id !== first[0]?.id) {
+      return res.status(403).json({ error: 'Kun admin' })
+    }
+
+    const { rows } = await pool.query(
+      'SELECT * FROM invite_whitelist ORDER BY created_at DESC'
+    )
+    const { rows: total } = await pool.query(
+      'SELECT COUNT(*) as count, COUNT(*) FILTER (WHERE approved=true) as approved, COUNT(*) FILTER (WHERE approved=false) as pending FROM invite_whitelist'
+    )
+    res.json({ entries: rows, stats: total[0] })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // ─── Admin: Login logs ────────────────────────────────────────────────────────
 app.get('/api/admin/logins', auth, async (req, res) => {
   try {
