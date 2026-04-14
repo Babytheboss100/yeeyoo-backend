@@ -5,6 +5,7 @@ import { generateContent, generateImagePrompt, TEMPLATES, AI_MODELS } from '../s
 import { INDUSTRY_TEMPLATES } from '../services/templates.js'
 import { getSubscription, PLANS } from './billing.js'
 import { createNotification } from './notifications.js'
+import { validateGenerate } from '../middleware/sanitize.js'
 
 const r = Router()
 r.use(auth)
@@ -25,7 +26,7 @@ r.get('/ai-models', (req, res) => {
 })
 
 // POST generate content
-r.post('/generate', async (req, res) => {
+r.post('/generate', validateGenerate, async (req, res) => {
   const { projectId, templateId, customPrompt, platforms, extraContext, aiModels: selectedAIs } = req.body
   if (!platforms?.length) return res.status(400).json({ error: 'Velg minst én plattform' })
 

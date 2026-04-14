@@ -5,6 +5,7 @@ import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
 import { sendVerificationEmail } from '../services/email.js'
+import { validateRegister, validateLogin } from '../middleware/sanitize.js'
 
 const r = Router()
 
@@ -88,7 +89,7 @@ async function findOrCreateOAuthUser({ sub, email, name, provider }) {
 
 // ─── EMAIL/PASSWORD ───────────────────────────────────────────────────────────
 
-r.post('/register', async (req, res) => {
+r.post('/register', validateRegister, async (req, res) => {
   const { name, email, password } = req.body
   if (!name || !email || !password) return res.status(400).json({ error: 'Mangler felt' })
   try {
@@ -115,7 +116,7 @@ r.post('/register', async (req, res) => {
   }
 })
 
-r.post('/login', async (req, res) => {
+r.post('/login', validateLogin, async (req, res) => {
   const { email, password } = req.body
   try {
     if (!await checkWhitelist(email)) {

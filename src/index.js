@@ -1,7 +1,6 @@
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
-import rateLimit from 'express-rate-limit'
 import dotenv from 'dotenv'
 dotenv.config()
 
@@ -19,19 +18,46 @@ import autopilotRoutes from './routes/autopilot.js'
 import imageRoutes from './routes/images.js'
 import affiliateRoutes from './routes/affiliate.js'
 import { auth } from './middleware/auth.js'
+import { corsOptions, generalLimiter, generateLimiter, suspiciousActivityLogger } from './middleware/security.js'
+import { trimStrings } from './middleware/sanitize.js'
 
 const app = express()
 const PORT = process.env.PORT || 3001
 
-// ─── Middleware ───────────────────────────────────────────────────────────────
-app.use(helmet({ crossOriginResourcePolicy: false }))
-app.use(cors({ origin: true, credentials: true }))
+// ─── Security middleware ─────────────────────────────────────────────────────
+app.use(helmet({
+  crossOriginResourcePolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      frameSrc: ["'none'"]
+    }
+  },
+  hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
+}))
+app.use(cors(corsOptions))
 app.set('trust proxy', 1)
+
+// Suspicious activity logging (before body parsing)
+app.use(suspiciousActivityLogger)
 
 // Webhook trenger raw body — må være FØR express.json()
 app.use('/api/billing/webhook', express.raw({ type: 'application/json' }))
-app.use(express.json())
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 200 }))
+app.use(express.json({ limit: '1mb' }))
+app.use(trimStrings)
+
+// Rate limiting: 100 req / 15 min globally
+app.use(generalLimiter)
+
+// Stricter rate limit on content generation: 10 req / hour
+app.use('/api/content/generate', generateLimiter)
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes)
