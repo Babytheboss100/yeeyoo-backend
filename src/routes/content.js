@@ -31,7 +31,7 @@ r.post('/generate', validateGenerate, async (req, res) => {
   const { projectId, templateId, customPrompt, platforms, extraContext, aiModels: selectedAIs } = req.body
   if (!platforms?.length) return res.status(400).json({ error: 'Velg minst én plattform' })
 
-  const aiModels = selectedAIs?.length ? selectedAIs : ['claude']
+  const aiModels = selectedAIs?.length ? selectedAIs : ['gemini']
 
   // ─── Sjekk plan-grenser ──────────────────────────────────────────────────
   const sub = await getSubscription(req.user.id)
