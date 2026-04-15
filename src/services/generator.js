@@ -14,8 +14,8 @@ const PLATFORM_RULES = {
     format:'Sterk innsikt/hook (1 setning)\n\n[Avsnitt 1 - kontekst]\n\n[Avsnitt 2 - hovedpoeng med data/erfaring]\n\n[Avsnitt 3 - lærdom/takeaway]\n\n[CTA - spørsmål til leseren]\n\n#hashtag1 #hashtag2 #hashtag3'
   },
   facebook: {
-    maxChars:2000,
-    style:'Konversasjonell og varm tone. 100-200 ord. Maks 1-2 emojis. Skriv som om du snakker med en venn. Bruk korte setninger. Avslutt ALLTID med et spørsmål som inviterer til kommentar.',
+    maxChars:500,
+    style:'Konversasjonell og varm tone. MAKS 500 tegn / 150 ord. Maks 1-2 emojis. Skriv som om du snakker med en venn. Bruk korte setninger. Avslutt ALLTID med et spørsmål som inviterer til kommentar.',
     format:'Hook (kort, personlig)\n\nKropp (2-3 korte avsnitt)\n\nSpørsmål til leserne?'
   },
   instagram: {
