@@ -203,10 +203,10 @@ TONE: ${analysis.toneOfVoice || 'Profesjonell men menneskelig'}
 INNHOLDSPILARER: ${pillars.join(', ')}
 STYRKER: ${(analysis.strengths || []).join(', ')}
 
-VIKTIG: LinkedIn maks 150 ord. Instagram maks 80 ord. Facebook maks 120 ord. TikTok maks 60 ord. Aldri mer. Telle nøye.
+VIKTIG: LinkedIn MAKS 700 tegn. Instagram maks 80 ord. Facebook maks 120 ord. TikTok maks 60 ord. Aldri mer. Telle nøye.
 
 Rules:
-- LinkedIn: MAKS 150 ord. Hook i første linje. 3-5 kulepunkter. Én tydelig CTA.
+- LinkedIn: MAKS 700 tegn. Hook i første linje. 3-5 kulepunkter. Én tydelig CTA.
 - Instagram: MAKS 80 ord. Emosjonell hook. Livsstil-vinkel. 5-8 relevante hashtags.
 - Facebook: MAKS 120 ord. Historiebasert. Spørsmål som driver kommentarer.
 - TikTok: MAKS 60 ord. Trendy, direkte, modige påstander.

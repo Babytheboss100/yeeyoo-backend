@@ -9,8 +9,8 @@ export const AI_MODELS = {
 
 const PLATFORM_RULES = {
   linkedin: {
-    maxChars:3000,
-    style:'Profesjonell og innsiktsdrevet tone. 200-300 ord. INGEN emojis. Start med en sterk innsikt eller kontraintuitiv påstand. Bruk korte avsnitt med linjeskift. Del personlig erfaring eller data. Avslutt med en refleksjon eller CTA. 3-5 relevante hashtags på slutten.',
+    maxChars:700,
+    style:'Profesjonell og innsiktsdrevet tone. MAKS 700 tegn totalt. INGEN emojis. Start med en sterk innsikt eller kontraintuitiv påstand. Bruk korte avsnitt med linjeskift. Del personlig erfaring eller data. Avslutt med en refleksjon eller CTA. 3-5 relevante hashtags på slutten.',
     format:'Sterk innsikt/hook (1 setning)\n\n[Avsnitt 1 - kontekst]\n\n[Avsnitt 2 - hovedpoeng med data/erfaring]\n\n[Avsnitt 3 - lærdom/takeaway]\n\n[CTA - spørsmål til leseren]\n\n#hashtag1 #hashtag2 #hashtag3'
   },
   facebook: {
