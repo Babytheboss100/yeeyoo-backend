@@ -54,7 +54,7 @@ export async function initDB() {
 
     CREATE TABLE IF NOT EXISTS subscriptions (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+      user_id TEXT UNIQUE,
       stripe_customer_id TEXT,
       stripe_subscription_id TEXT,
       plan TEXT DEFAULT 'free',
@@ -65,7 +65,7 @@ export async function initDB() {
 
     CREATE TABLE IF NOT EXISTS projects (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      user_id TEXT,
       name TEXT NOT NULL,
       slug TEXT NOT NULL,
       color TEXT DEFAULT '#5555ff',
@@ -78,8 +78,8 @@ export async function initDB() {
 
     CREATE TABLE IF NOT EXISTS posts (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-      project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+      user_id TEXT,
+      project_id TEXT,
       platform TEXT NOT NULL,
       content TEXT NOT NULL,
       ai_model TEXT DEFAULT 'claude',
@@ -92,7 +92,7 @@ export async function initDB() {
 
     CREATE TABLE IF NOT EXISTS oauth_tokens (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      user_id TEXT,
       platform TEXT NOT NULL,
       access_token TEXT,
       refresh_token TEXT,
@@ -106,9 +106,9 @@ export async function initDB() {
     -- Team members
     CREATE TABLE IF NOT EXISTS team_members (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
-      user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-      invited_by UUID REFERENCES users(id),
+      project_id TEXT,
+      user_id TEXT,
+      invited_by TEXT,
       email TEXT NOT NULL,
       role TEXT DEFAULT 'editor',
       status TEXT DEFAULT 'pending',
@@ -120,7 +120,7 @@ export async function initDB() {
     -- Notifications
     CREATE TABLE IF NOT EXISTS notifications (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      user_id TEXT,
       title TEXT NOT NULL,
       message TEXT NOT NULL,
       type TEXT DEFAULT 'info',
@@ -163,8 +163,8 @@ export async function initDB() {
     -- SEO profiles
     CREATE TABLE IF NOT EXISTS seo_profiles (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-      project_id UUID REFERENCES projects(id) ON DELETE CASCADE UNIQUE,
+      user_id TEXT,
+      project_id TEXT UNIQUE,
       company_name TEXT NOT NULL,
       company_offer TEXT DEFAULT '',
       industry TEXT NOT NULL,
@@ -193,7 +193,7 @@ export async function initDB() {
     -- Login tracking
     CREATE TABLE IF NOT EXISTS login_logs (
       id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      user_id TEXT,
       email TEXT NOT NULL,
       ip_address TEXT,
       user_agent TEXT,
