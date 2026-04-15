@@ -5,12 +5,37 @@ import { auth } from '../middleware/auth.js'
 const r = Router()
 r.use(auth)
 
+// ─── Self-healing table creation ────────────────────────────────────────────
+let tableVerified = false
+async function ensureSmartplanTable() {
+  if (tableVerified) return
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS smartplan_businesses (
+      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      user_id TEXT NOT NULL,
+      url TEXT,
+      name TEXT,
+      description TEXT,
+      industry TEXT,
+      target_audience TEXT,
+      tone TEXT,
+      goals TEXT,
+      summary TEXT,
+      raw_data TEXT,
+      analysis JSONB,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `)
+  tableVerified = true
+}
+
 // ─── Analyse a URL ──────────────────────────────────────────────────────────
 r.post('/analyse', async (req, res) => {
   const { url } = req.body
   if (!url) return res.status(400).json({ error: 'URL mangler' })
 
   try {
+    await ensureSmartplanTable()
     // Scrape via Jina Reader
     const jinaUrl = `https://r.jina.ai/${url}`
     const scrapeRes = await fetch(jinaUrl, {
@@ -109,6 +134,7 @@ r.post('/generate-month', async (req, res) => {
   if (!businessId) return res.status(400).json({ error: 'businessId mangler' })
 
   try {
+    await ensureSmartplanTable()
     // Fetch the business analysis
     console.log('generate-month: fetching business', businessId, 'for user', req.user.id)
     const { rows: bizRows } = await pool.query(
@@ -271,6 +297,7 @@ r.get('/calendar', async (req, res) => {
   const endDate = new Date(year, month, 0, 23, 59, 59)
 
   try {
+    await ensureSmartplanTable()
     let q = `
       SELECT p.*, sb.name as business_name, sb.industry as business_industry,
         COALESCE(p.scheduled_at, p.created_at) as calendar_date
@@ -302,6 +329,7 @@ r.patch('/posts/:id/schedule', async (req, res) => {
   if (!scheduledAt) return res.status(400).json({ error: 'scheduledAt mangler' })
 
   try {
+    await ensureSmartplanTable()
     const { rows } = await pool.query(
       `UPDATE posts SET scheduled_at = $1 WHERE id = $2 AND user_id = $3 RETURNING *`,
       [scheduledAt, req.params.id, req.user.id]
@@ -316,6 +344,7 @@ r.patch('/posts/:id/schedule', async (req, res) => {
 // ─── Get user's businesses ──────────────────────────────────────────────────
 r.get('/businesses', async (req, res) => {
   try {
+    await ensureSmartplanTable()
     console.log('Smartplan businesses: fetching for user', req.user.id)
     const { rows } = await pool.query(
       'SELECT * FROM smartplan_businesses WHERE user_id = $1 ORDER BY created_at DESC',
