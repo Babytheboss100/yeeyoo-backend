@@ -6,6 +6,7 @@ import { INDUSTRY_TEMPLATES } from '../services/templates.js'
 import { getSubscription, PLANS } from './billing.js'
 import { createNotification } from './notifications.js'
 import { validateGenerate } from '../middleware/sanitize.js'
+import { renderBrandedImage } from '../services/imageRenderer.js'
 
 const r = Router()
 r.use(auth)
@@ -89,7 +90,14 @@ r.post('/generate', validateGenerate, async (req, res) => {
              VALUES (gen_random_uuid(),$1,$2,$3,$4,'pending') RETURNING *`,
             [req.user.id, projectId || null, platform, result.text]
           )
-          return { ...rows[0], ai_model: modelId }
+          const post = rows[0]
+
+          // Generate branded image in background (non-blocking)
+          renderBrandedImage(result.text, platform, project?.name)
+            .then(imageUrl => pool.query('UPDATE posts SET image_url=$1 WHERE id=$2', [imageUrl, post.id]))
+            .catch(e => console.error('Branded image gen failed:', e.message))
+
+          return { ...post, ai_model: modelId }
         })
       )
     )

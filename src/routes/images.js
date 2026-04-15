@@ -1,5 +1,7 @@
 import { Router } from 'express'
 import { auth } from '../middleware/auth.js'
+import { pool } from '../db.js'
+import { renderBrandedImage } from '../services/imageRenderer.js'
 
 const r = Router()
 r.use(auth)
@@ -65,6 +67,26 @@ r.post('/generate', async (req, res) => {
   } catch (e) {
     console.error('Image generate error:', e.stack || e.message)
     res.status(500).json({ error: e.message })
+  }
+})
+
+// POST /api/images/branded — render branded social media image via Puppeteer
+r.post('/branded', async (req, res) => {
+  const { postId, text, platform, projectName } = req.body
+  if (!text) return res.status(400).json({ error: 'Tekst mangler' })
+
+  try {
+    const imageUrl = await renderBrandedImage(text, platform, projectName)
+
+    // Save to post if postId provided
+    if (postId) {
+      await pool.query('UPDATE posts SET image_url = $1 WHERE id = $2 AND user_id = $3', [imageUrl, postId, req.user.id])
+    }
+
+    res.json({ image: imageUrl, format: 'png' })
+  } catch (e) {
+    console.error('Branded image error:', e.message)
+    res.status(500).json({ error: 'Bildegenereringen feilet: ' + e.message })
   }
 })
 

@@ -132,6 +132,9 @@ export async function initDB() {
     -- Onboarding flag
     ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_done BOOLEAN DEFAULT false;
 
+    -- Image URL on posts
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS image_url TEXT;
+
     -- OAuth fields
     ALTER TABLE users ADD COLUMN IF NOT EXISTS vipps_sub TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT;
