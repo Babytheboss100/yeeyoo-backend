@@ -19,9 +19,9 @@ const PLATFORM_RULES = {
     format:'Hook (kort, personlig)\n\nKropp (2-3 korte avsnitt)\n\nSpørsmål til leserne?'
   },
   instagram: {
-    maxChars:2200,
-    style:'Visuelt og inspirerende. Maks 150 ord i selve teksten. 3-5 emojis strategisk plassert. Første linje MÅ fange oppmerksomhet — dette er det eneste folk ser før "les mer". Inkluder CTA (lagre, del, kommenter). 15-20 hashtags på slutten etter punktlinje.',
-    format:'🔥 Sterk første linje (hook)\n\nKort kropp (3-4 setninger maks)\n\nCTA (Lagre dette! / Tag en venn / Kommenter)\n\n.\n.\n.\n#hashtag1 #hashtag2 ... (15-20 stk)'
+    maxChars:400,
+    style:'Visuelt og inspirerende. MAKS 400 tegn totalt. 3-5 emojis strategisk plassert. Første linje MÅ fange oppmerksomhet. Inkluder CTA (lagre, del, kommenter). 5-8 hashtags på slutten.',
+    format:'🔥 Sterk første linje (hook)\n\nKort kropp (2-3 setninger maks)\n\nCTA\n\n#hashtag1 #hashtag2 ... (5-8 stk)'
   },
   twitter: {
     maxChars:280,
@@ -30,7 +30,7 @@ const PLATFORM_RULES = {
   },
   tiktok: {
     maxChars:300,
-    style:'Ultra-kort hook i første setning (fang oppmerksomhet på 1 sekund). Maks 100 ord. Trendy og autentisk språk. Bruk emojis. Oppfordre til å følge, kommentere, eller dele. Snakk direkte til seeren.',
+    style:'Ultra-kort hook i første setning (fang oppmerksomhet på 1 sekund). MAKS 300 tegn totalt. Trendy og autentisk språk. Bruk emojis. Oppfordre til å følge, kommentere, eller dele. Snakk direkte til seeren.',
     format:'HOOK: [1 setning som stopper scrolling]\n\n[Kort kropp - maks 3 setninger]\n\n[CTA - følg for mer / kommenter X / del med en venn]\n\n#trending #hashtags (5-8)'
   },
   email: {
@@ -124,6 +124,18 @@ async function generateDeepSeek({ system, user, apiKey }) {
   const d = await r.json(); return d.choices[0].message.content
 }
 
+function truncateToLimit(text, platform) {
+  const maxChars = PLATFORM_RULES[platform]?.maxChars
+  if (!maxChars || !text || text.length <= maxChars) return text
+  // Try to cut at last complete sentence within limit
+  const trimmed = text.substring(0, maxChars)
+  const lastSentence = trimmed.search(/[.!?]\s[^.!?]*$/)
+  if (lastSentence > maxChars * 0.6) return trimmed.substring(0, lastSentence + 1)
+  // Fall back to last word boundary
+  const lastSpace = trimmed.lastIndexOf(' ')
+  return lastSpace > maxChars * 0.6 ? trimmed.substring(0, lastSpace) : trimmed
+}
+
 export async function generateContent({ project, templateId, customPrompt, platform, extraContext, aiModels, keys }) {
   const { system, user } = buildPrompts({ project, templateId, customPrompt, platform, extraContext })
   const tasks = aiModels.map(async modelId => {
@@ -136,6 +148,7 @@ export async function generateContent({ project, templateId, customPrompt, platf
     else if (modelId==='grok')     text = await generateGrok({ system, user, apiKey })
     else if (modelId==='deepseek') text = await generateDeepSeek({ system, user, apiKey })
     else throw new Error(`Ukjent AI: ${modelId}`)
+    text = truncateToLimit(text, platform)
     return { modelId, text }
   })
   const results = await Promise.allSettled(tasks)
