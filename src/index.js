@@ -142,6 +142,17 @@ app.post('/api/admin/set-admin', auth, requireAdmin, async (req, res) => {
   }
 })
 
+// ─── Admin: Invite codes ─────────────────────────────────────────────────────
+app.get('/api/admin/invite-codes', auth, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM invite_codes ORDER BY code')
+    const used = rows.filter(r => r.used).length
+    res.json({ codes: rows, total: rows.length, used, available: rows.length - used })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // ─── Admin: Waitlist ──────────────────────────────────────────────────────────
 app.get('/api/admin/waitlist', auth, requireAdmin, async (req, res) => {
   try {

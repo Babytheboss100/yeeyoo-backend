@@ -96,13 +96,39 @@ async function findOrCreateOAuthUser({ sub, email, name, provider }) {
   return rows[0]
 }
 
+// ─── INVITE CODE VERIFICATION ─────────────────────────────────────────────────
+
+r.post('/verify-invite', async (req, res) => {
+  const { code } = req.body
+  if (!code) return res.status(400).json({ error: 'Kode mangler' })
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM invite_codes WHERE UPPER(code) = UPPER($1)', [code.trim()]
+    )
+    if (!rows.length) return res.status(404).json({ error: 'Ugyldig invitasjonskode' })
+    if (rows[0].used) return res.status(400).json({ error: 'Koden er allerede brukt' })
+    res.json({ valid: true, code: rows[0].code })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // ─── EMAIL/PASSWORD ───────────────────────────────────────────────────────────
 
 r.post('/register', validateRegister, async (req, res) => {
-  const { name, email, password } = req.body
+  const { name, email, password, inviteCode } = req.body
   if (!name || !email || !password) return res.status(400).json({ error: 'Mangler felt' })
   try {
-    if (!await checkWhitelist(email)) {
+    // If invite code provided, validate and skip whitelist
+    let codeUsed = false
+    if (inviteCode) {
+      const { rows: codeRows } = await pool.query(
+        'SELECT * FROM invite_codes WHERE UPPER(code) = UPPER($1)', [inviteCode.trim()]
+      )
+      if (!codeRows.length) return res.status(400).json({ error: 'Ugyldig invitasjonskode' })
+      if (codeRows[0].used) return res.status(400).json({ error: 'Invitasjonskoden er allerede brukt' })
+      codeUsed = true
+    } else if (!await checkWhitelist(email)) {
       return res.status(403).json({ error: 'invite_only', message: 'Vi er i lukket beta. Søk om tilgang.' })
     }
     const hash = await bcrypt.hash(password, 10)
@@ -112,6 +138,19 @@ r.post('/register', validateRegister, async (req, res) => {
        VALUES (gen_random_uuid(),$1,$2,$3,'email',false,$4) RETURNING id, name, email`,
       [name, email, hash, verifyToken]
     )
+    // Mark invite code as used
+    if (codeUsed && inviteCode) {
+      await pool.query(
+        'UPDATE invite_codes SET used=true, used_by=$1, email=$2 WHERE UPPER(code)=UPPER($3)',
+        [rows[0].id, email, inviteCode.trim()]
+      )
+      // Auto-whitelist the user
+      await pool.query(
+        `INSERT INTO invite_whitelist (email, approved, note) VALUES (LOWER($1), true, 'Invite code')
+         ON CONFLICT (email) DO UPDATE SET approved=true`,
+        [email]
+      )
+    }
     // Send verification email (non-blocking)
     sendVerificationEmail(email, name, verifyToken)
     res.status(201).json({

@@ -160,6 +160,16 @@ export async function initDB() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
+    -- Invite codes
+    CREATE TABLE IF NOT EXISTS invite_codes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      code TEXT UNIQUE NOT NULL,
+      email TEXT,
+      used BOOLEAN DEFAULT false,
+      used_by TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
     -- SEO profiles
     CREATE TABLE IF NOT EXISTS seo_profiles (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -272,6 +282,18 @@ export async function initDB() {
      ON CONFLICT (email) DO UPDATE SET approved=true`,
     [ADMIN_EMAIL]
   )
+
+  // Seed invite codes if table is empty
+  const { rows: codeCount } = await pool.query('SELECT COUNT(*) as count FROM invite_codes')
+  if (parseInt(codeCount[0].count) === 0) {
+    const codes = []
+    for (let i = 1; i <= 20; i++) codes.push(`YEEYOO-BETA${String(i).padStart(2, '0')}`)
+    for (let i = 1; i <= 5; i++) codes.push(`YEEYOO-VIP${String(i).padStart(2, '0')}`)
+    for (const code of codes) {
+      await pool.query('INSERT INTO invite_codes (code) VALUES ($1) ON CONFLICT (code) DO NOTHING', [code])
+    }
+    console.log(`🎟️ Seeded ${codes.length} invite codes`)
+  }
 
   console.log('✅ DB ready')
 }
