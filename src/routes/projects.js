@@ -18,6 +18,7 @@ r.get('/', async (req, res) => {
 r.post('/', async (req, res) => {
   const { name, slug, color, tone, audience, keywords, about } = req.body
   try {
+    console.log('POST /api/projects — user_id:', req.user.id, 'name:', name)
     const { rows } = await pool.query(
       `INSERT INTO projects (id, user_id, name, slug, color, tone, audience, keywords, about)
        VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
