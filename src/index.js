@@ -17,6 +17,7 @@ import smartplanRoutes from './routes/smartplan.js'
 import autopilotRoutes from './routes/autopilot.js'
 import imageRoutes from './routes/images.js'
 import affiliateRoutes from './routes/affiliate.js'
+import campaignRoutes from './routes/campaigns.js'
 import { auth } from './middleware/auth.js'
 import { corsOptions, generalLimiter, generateLimiter, aiLimiter, suspiciousActivityLogger } from './middleware/security.js'
 import { trimStrings } from './middleware/sanitize.js'
@@ -85,6 +86,7 @@ app.use('/api/smartplan', smartplanRoutes)
 app.use('/api/autopilot', autopilotRoutes)
 app.use('/api/images', imageRoutes)
 app.use('/api/affiliate', affiliateRoutes)
+app.use('/api/campaigns', campaignRoutes)
 
 // ─── Onboarding ───────────────────────────────────────────────────────────────
 app.get('/api/onboarding/status', auth, async (req, res) => {
