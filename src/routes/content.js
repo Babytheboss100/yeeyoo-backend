@@ -107,7 +107,7 @@ r.post('/generate', validateGenerate, async (req, res) => {
 
     // Generate branded images in background AFTER response is sent
     for (const post of posts) {
-      renderBrandedImageSafe(post.content, post.platform, project?.name, 10000)
+      renderBrandedImageSafe(post.content, post.platform, project?.name, 5000)
         .then(imageUrl => {
           if (imageUrl) return pool.query('UPDATE posts SET image_url=$1 WHERE id=$2', [imageUrl, post.id])
         })

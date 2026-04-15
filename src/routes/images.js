@@ -56,7 +56,7 @@ r.post('/generate', async (req, res) => {
 
     if (IMAGE_PROVIDER !== 'dalle') {
       // Try Puppeteer first
-      image = await renderBrandedImageSafe(imageText, platform, projectName, 10000)
+      image = await renderBrandedImageSafe(imageText, platform, projectName, 5000)
       if (image) provider = 'puppeteer'
     }
 
