@@ -116,8 +116,8 @@ r.post('/verify-invite', async (req, res) => {
 // ─── EMAIL/PASSWORD ───────────────────────────────────────────────────────────
 
 r.post('/register', validateRegister, async (req, res) => {
-  const { name, email, password, inviteCode } = req.body
-  if (!name || !email || !password) return res.status(400).json({ error: 'Mangler felt' })
+  const { name, email, password, phone, address, inviteCode } = req.body
+  if (!name || !email || !password || !phone) return res.status(400).json({ error: 'Mangler felt' })
   try {
     // If invite code provided, validate and skip whitelist
     let codeUsed = false
@@ -134,9 +134,9 @@ r.post('/register', validateRegister, async (req, res) => {
     const hash = await bcrypt.hash(password, 10)
     const verifyToken = crypto.randomBytes(32).toString('hex')
     const { rows } = await pool.query(
-      `INSERT INTO users (id, name, email, password_hash, auth_provider, email_verified, verify_token)
-       VALUES (gen_random_uuid(),$1,$2,$3,'email',false,$4) RETURNING id, name, email`,
-      [name, email, hash, verifyToken]
+      `INSERT INTO users (id, name, email, password_hash, phone_number, address, auth_provider, email_verified, verify_token)
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,'email',false,$6) RETURNING id, name, email`,
+      [name, email, hash, phone, address || null, verifyToken]
     )
     // Mark invite code as used
     if (codeUsed && inviteCode) {

@@ -12,7 +12,10 @@ export function handleValidation(req, res, next) {
 // ─── Auth route validators ───────────────────────────────────────────────────
 export const validateRegister = [
   body('name').trim().notEmpty().withMessage('Navn er påkrevd').escape(),
+  body('phone').trim().notEmpty().withMessage('Telefonnummer er påkrevd')
+    .matches(/^\+?\d[\d\s]{6,14}$/).withMessage('Ugyldig telefonnummer'),
   body('email').isEmail().normalizeEmail().withMessage('Ugyldig e-postadresse'),
+  body('address').optional({ values: 'falsy' }).trim().escape(),
   body('password').isLength({ min: 8 }).withMessage('Passord må være minst 8 tegn'),
   handleValidation
 ]

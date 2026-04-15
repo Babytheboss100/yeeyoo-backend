@@ -145,6 +145,10 @@ export async function initDB() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_token TEXT;
 
+    -- Phone & address
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT;
+
     -- Admin flag
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false;
 
