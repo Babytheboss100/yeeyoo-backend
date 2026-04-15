@@ -15,7 +15,13 @@ r.use(auth)
 r.get('/templates', (req, res) => res.json(TEMPLATES))
 
 // GET industry templates library
-r.get('/industry-templates', (req, res) => res.json(INDUSTRY_TEMPLATES))
+r.get('/industry-templates', (req, res) => {
+  try {
+    res.json(INDUSTRY_TEMPLATES || [])
+  } catch (e) {
+    res.status(500).json({ error: 'Kunne ikke laste bransjemaler' })
+  }
+})
 
 // GET AI models
 r.get('/ai-models', (req, res) => {
