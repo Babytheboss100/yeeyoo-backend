@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { auth } from '../middleware/auth.js'
 import { pool } from '../db.js'
-import { renderBrandedImage } from '../services/imageRenderer.js'
+import { renderBrandedImageSafe } from '../services/imageRenderer.js'
 
 const r = Router()
 r.use(auth)
@@ -76,7 +76,8 @@ r.post('/branded', async (req, res) => {
   if (!text) return res.status(400).json({ error: 'Tekst mangler' })
 
   try {
-    const imageUrl = await renderBrandedImage(text, platform, projectName)
+    const imageUrl = await renderBrandedImageSafe(text, platform, projectName, 10000)
+    if (!imageUrl) return res.status(504).json({ error: 'Bildegenerering tok for lang tid (10s timeout)' })
 
     // Save to post if postId provided
     if (postId) {

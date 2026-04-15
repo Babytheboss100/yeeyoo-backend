@@ -156,16 +156,23 @@ export async function renderBrandedImage(text, platform, projectName) {
 
   try {
     await page.setViewport({ width: 1080, height: 1080, deviceScaleFactor: 1 })
-    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 15000 })
-
-    // Wait for fonts to load
-    await page.evaluate(() => document.fonts.ready)
+    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 8000 })
 
     const buf = await page.screenshot({ type: 'png', clip: { x: 0, y: 0, width: 1080, height: 1080 } })
     return `data:image/png;base64,${buf.toString('base64')}`
   } finally {
     await page.close()
   }
+}
+
+/**
+ * Render with a hard timeout. Returns null if it takes too long.
+ */
+export async function renderBrandedImageSafe(text, platform, projectName, timeoutMs = 10000) {
+  return Promise.race([
+    renderBrandedImage(text, platform, projectName),
+    new Promise(resolve => setTimeout(() => resolve(null), timeoutMs)),
+  ])
 }
 
 // Graceful cleanup

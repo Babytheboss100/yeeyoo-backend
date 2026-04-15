@@ -6,7 +6,7 @@ import { INDUSTRY_TEMPLATES } from '../services/templates.js'
 import { getSubscription, PLANS } from './billing.js'
 import { createNotification } from './notifications.js'
 import { validateGenerate } from '../middleware/sanitize.js'
-import { renderBrandedImage } from '../services/imageRenderer.js'
+import { renderBrandedImageSafe } from '../services/imageRenderer.js'
 
 const r = Router()
 r.use(auth)
@@ -90,14 +90,7 @@ r.post('/generate', validateGenerate, async (req, res) => {
              VALUES (gen_random_uuid(),$1,$2,$3,$4,'pending') RETURNING *`,
             [req.user.id, projectId || null, platform, result.text]
           )
-          const post = rows[0]
-
-          // Generate branded image in background (non-blocking)
-          renderBrandedImage(result.text, platform, project?.name)
-            .then(imageUrl => pool.query('UPDATE posts SET image_url=$1 WHERE id=$2', [imageUrl, post.id]))
-            .catch(e => console.error('Branded image gen failed:', e.message))
-
-          return { ...post, ai_model: modelId }
+          return { ...rows[0], ai_model: modelId }
         })
       )
     )
@@ -111,6 +104,15 @@ r.post('/generate', validateGenerate, async (req, res) => {
     }
 
     res.json({ posts, errors })
+
+    // Generate branded images in background AFTER response is sent
+    for (const post of posts) {
+      renderBrandedImageSafe(post.content, post.platform, project?.name, 10000)
+        .then(imageUrl => {
+          if (imageUrl) return pool.query('UPDATE posts SET image_url=$1 WHERE id=$2', [imageUrl, post.id])
+        })
+        .catch(e => console.error('Background image gen failed:', e.message))
+    }
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
