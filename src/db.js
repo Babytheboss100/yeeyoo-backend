@@ -254,7 +254,7 @@ export async function initDB() {
   console.log('  smartplan_businesses verified ✓')
 
   // Bootstrap admin user
-  const ADMIN_EMAIL = 'heljarprebensen@gmail.com'
+  const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'heljarprebensen@gmail.com'
   await pool.query(
     `INSERT INTO users (id, name, email, auth_provider, is_admin, email_verified, onboarding_done)
      VALUES (gen_random_uuid(), 'Heljar', $1, 'google', true, true, true)

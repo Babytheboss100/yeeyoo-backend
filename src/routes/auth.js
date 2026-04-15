@@ -9,8 +9,18 @@ import { validateRegister, validateLogin } from '../middleware/sanitize.js'
 
 const r = Router()
 
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'heljarprebensen@gmail.com'
+
+function escapeHtml(str) {
+  if (!str) return ''
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
 const signToken = (user) =>
-  jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '7d' })
+  jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '1h' })
+
+const signRefreshToken = (user) =>
+  jwt.sign({ id: user.id, type: 'refresh' }, process.env.JWT_SECRET, { expiresIn: '30d' })
 
 // Log login to database
 async function logLogin(user, req, method = 'email') {
@@ -44,9 +54,8 @@ async function checkWhitelist(email) {
     'SELECT is_admin FROM users WHERE LOWER(email)=LOWER($1)', [email]
   )
   if (user[0]?.is_admin === true) return true
-  // Hardcoded admin emails always bypass
-  const adminEmails = ['heljarprebensen@gmail.com']
-  if (adminEmails.includes(email.toLowerCase())) return true
+  // Admin email always bypasses whitelist
+  if (ADMIN_EMAIL && email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) return true
   // Check whitelist
   const { rows } = await pool.query(
     'SELECT approved FROM invite_whitelist WHERE LOWER(email)=LOWER($1)', [email]
@@ -139,7 +148,7 @@ r.post('/login', validateLogin, async (req, res) => {
       })
     }
     logLogin(rows[0], req, 'email')
-    res.json({ token: signToken(rows[0]), user: { id: rows[0].id, name: rows[0].name, email: rows[0].email } })
+    res.json({ token: signToken(rows[0]), refreshToken: signRefreshToken(rows[0]), user: { id: rows[0].id, name: rows[0].name, email: rows[0].email } })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
@@ -154,6 +163,22 @@ r.get('/me', auth, async (req, res) => {
     res.json(rows[0])
   } catch (e) {
     res.status(500).json({ error: e.message })
+  }
+})
+
+// ─── REFRESH TOKEN ────────────────────────────────────────────────────────────
+
+r.post('/refresh', async (req, res) => {
+  const { refreshToken } = req.body
+  if (!refreshToken) return res.status(400).json({ error: 'Refresh token mangler' })
+  try {
+    const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET)
+    if (decoded.type !== 'refresh') return res.status(401).json({ error: 'Ugyldig token-type' })
+    const { rows } = await pool.query('SELECT id, email FROM users WHERE id=$1', [decoded.id])
+    if (!rows[0]) return res.status(401).json({ error: 'Bruker ikke funnet' })
+    res.json({ token: signToken(rows[0]), refreshToken: signRefreshToken(rows[0]) })
+  } catch {
+    res.status(401).json({ error: 'Ugyldig eller utløpt refresh token' })
   }
 })
 
@@ -375,8 +400,8 @@ r.post('/request-access', async (req, res) => {
 
     // Notify admin about new beta request
     sendEmail(
-      'heljarprebensen@gmail.com',
-      `Ny beta-søknad — ${email}`,
+      ADMIN_EMAIL,
+      `Ny beta-søknad — ${escapeHtml(email)}`,
       `<!DOCTYPE html>
       <html><head><meta charset="utf-8"></head>
       <body style="margin:0;padding:0;background:#050714;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
@@ -385,8 +410,8 @@ r.post('/request-access', async (req, res) => {
             <table width="520" cellpadding="0" cellspacing="0" style="background:linear-gradient(145deg,rgba(12,17,48,.98),rgba(8,12,30,.98));border:1px solid rgba(255,255,255,.13);border-radius:16px;overflow:hidden;">
               <tr><td style="padding:32px 40px;">
                 <div style="font-size:22px;font-weight:800;color:#f0f4ff;margin-bottom:16px;">Ny beta-søknad</div>
-                <p style="color:#8892b0;font-size:15px;margin-bottom:8px;"><strong style="color:#c5cee0;">E-post:</strong> ${email}</p>
-                <p style="color:#8892b0;font-size:15px;margin-bottom:24px;"><strong style="color:#c5cee0;">Melding:</strong> ${message ? message.substring(0, 500) : '<em>Ingen melding</em>'}</p>
+                <p style="color:#8892b0;font-size:15px;margin-bottom:8px;"><strong style="color:#c5cee0;">E-post:</strong> ${escapeHtml(email)}</p>
+                <p style="color:#8892b0;font-size:15px;margin-bottom:24px;"><strong style="color:#c5cee0;">Melding:</strong> ${message ? escapeHtml(message.substring(0, 500)) : '<em>Ingen melding</em>'}</p>
                 <a href="${process.env.FRONTEND_URL || 'https://app.yeeyoo.no'}/admin" style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#2d5be3,#7c3aed);color:#fff;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px;">Administrer venteliste →</a>
                 <hr style="border:none;border-top:1px solid rgba(255,255,255,.07);margin:24px 0;">
                 <p style="color:#4a5278;font-size:11px;">Yeeyoo admin-varsel</p>

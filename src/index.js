@@ -18,7 +18,7 @@ import autopilotRoutes from './routes/autopilot.js'
 import imageRoutes from './routes/images.js'
 import affiliateRoutes from './routes/affiliate.js'
 import { auth } from './middleware/auth.js'
-import { corsOptions, generalLimiter, generateLimiter, suspiciousActivityLogger } from './middleware/security.js'
+import { corsOptions, generalLimiter, generateLimiter, aiLimiter, suspiciousActivityLogger } from './middleware/security.js'
 import { trimStrings } from './middleware/sanitize.js'
 
 const app = express()
@@ -58,6 +58,19 @@ app.use(generalLimiter)
 
 // Stricter rate limit on content generation: 10 req / hour
 app.use('/api/content/generate', generateLimiter)
+
+// Rate limit on all AI endpoints: 20 req / hour
+app.use('/api/images/generate', aiLimiter)
+app.use('/api/seo/generate', aiLimiter)
+app.use('/api/autopilot/generate', aiLimiter)
+app.use('/api/smartplan/analyse', aiLimiter)
+
+// ─── Admin middleware ────────────────────────────────────────────────────────
+async function requireAdmin(req, res, next) {
+  const { rows } = await pool.query('SELECT is_admin FROM users WHERE id=$1', [req.user.id])
+  if (!rows[0]?.is_admin) return res.status(403).json({ error: 'Kun admin' })
+  next()
+}
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes)
@@ -99,7 +112,7 @@ app.post('/api/onboarding/complete', auth, async (req, res) => {
 })
 
 // ─── Admin: Users ─────────────────────────────────────────────────────────────
-app.get('/api/admin/users', auth, async (req, res) => {
+app.get('/api/admin/users', auth, requireAdmin, async (req, res) => {
   try {
     const { rows } = await pool.query(
       'SELECT id, name, email, auth_provider, is_admin, email_verified, created_at FROM users ORDER BY created_at DESC'
@@ -110,16 +123,9 @@ app.get('/api/admin/users', auth, async (req, res) => {
   }
 })
 
-// Set admin flag (only first user / existing admin can do this)
-app.post('/api/admin/set-admin', auth, async (req, res) => {
+// Set admin flag
+app.post('/api/admin/set-admin', auth, requireAdmin, async (req, res) => {
   try {
-    // Check caller is admin or first user
-    const { rows: caller } = await pool.query('SELECT is_admin FROM users WHERE id=$1', [req.user.id])
-    const { rows: first } = await pool.query('SELECT id FROM users ORDER BY created_at LIMIT 1')
-    if (!caller[0]?.is_admin && req.user.id !== first[0]?.id) {
-      return res.status(403).json({ error: 'Kun admin' })
-    }
-
     const { email, isAdmin } = req.body
     if (!email) return res.status(400).json({ error: 'E-post mangler' })
 
@@ -135,14 +141,8 @@ app.post('/api/admin/set-admin', auth, async (req, res) => {
 })
 
 // ─── Admin: Waitlist ──────────────────────────────────────────────────────────
-app.get('/api/admin/waitlist', auth, async (req, res) => {
+app.get('/api/admin/waitlist', auth, requireAdmin, async (req, res) => {
   try {
-    const { rows: caller } = await pool.query('SELECT is_admin FROM users WHERE id=$1', [req.user.id])
-    const { rows: first } = await pool.query('SELECT id FROM users ORDER BY created_at LIMIT 1')
-    if (!caller[0]?.is_admin && req.user.id !== first[0]?.id) {
-      return res.status(403).json({ error: 'Kun admin' })
-    }
-
     const { rows } = await pool.query(
       'SELECT * FROM invite_whitelist ORDER BY created_at DESC'
     )
@@ -156,14 +156,8 @@ app.get('/api/admin/waitlist', auth, async (req, res) => {
 })
 
 // ─── Admin: Login logs ────────────────────────────────────────────────────────
-app.get('/api/admin/logins', auth, async (req, res) => {
+app.get('/api/admin/logins', auth, requireAdmin, async (req, res) => {
   try {
-    // Check admin
-    const { rows: u } = await pool.query('SELECT * FROM users WHERE id=$1', [req.user.id])
-    // Allow first user or admin role
-    const { rows: firstUser } = await pool.query('SELECT id FROM users ORDER BY created_at LIMIT 1')
-    if (u[0]?.id !== firstUser[0]?.id) return res.status(403).json({ error: 'Admin only' })
-
     const { limit = 100, offset = 0 } = req.query
     const { rows } = await pool.query(
       'SELECT * FROM login_logs ORDER BY created_at DESC LIMIT $1 OFFSET $2',
@@ -176,7 +170,7 @@ app.get('/api/admin/logins', auth, async (req, res) => {
   }
 })
 
-app.get('/api/admin/login-stats', auth, async (req, res) => {
+app.get('/api/admin/login-stats', auth, requireAdmin, async (req, res) => {
   try {
     const [byMethod, byCountry, byDay, recent] = await Promise.all([
       pool.query('SELECT method, COUNT(*) as count FROM login_logs GROUP BY method ORDER BY count DESC'),

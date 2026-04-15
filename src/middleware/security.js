@@ -39,6 +39,15 @@ export const generateLimiter = rateLimit({
   message: { error: 'Genererings-grensen er nådd (10/time). Prøv igjen senere.' }
 })
 
+// ─── AI endpoint limiter: 20 req / hour per IP (images, seo, autopilot, smartplan) ─
+export const aiLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'AI-grensen er nådd (20/time). Prøv igjen senere.' }
+})
+
 // ─── Suspicious activity logger ─────────────────────────────────────────────
 const suspiciousPatterns = [
   /(\.\.\/)/, /(<script)/i, /(union\s+select)/i, /(\bor\b\s+1\s*=\s*1)/i,
