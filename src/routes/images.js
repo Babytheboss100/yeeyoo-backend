@@ -2,49 +2,59 @@ import { Router } from 'express'
 import { auth } from '../middleware/auth.js'
 import { pool } from '../db.js'
 import { renderBrandedImageSafe } from '../services/imageRenderer.js'
+import { fal } from '@fal-ai/client'
 
 const r = Router()
 r.use(auth)
 
-const IMAGE_PROVIDER = process.env.IMAGE_PROVIDER || 'puppeteer' // 'puppeteer' | 'dalle'
+// Configure fal.ai client
+fal.config({ credentials: () => process.env.FAL_KEY })
 
-function buildDallePrompt(content, platform) {
+const PLATFORM_SIZES = {
+  linkedin:  { width: 1792, height: 1024, aspect_ratio: '16:9' },
+  facebook:  { width: 1792, height: 1024, aspect_ratio: '16:9' },
+  twitter:   { width: 1792, height: 1024, aspect_ratio: '16:9' },
+  instagram: { width: 1024, height: 1024, aspect_ratio: '1:1' },
+  tiktok:    { width: 1024, height: 1792, aspect_ratio: '9:16' },
+  email:     { width: 1792, height: 1024, aspect_ratio: '16:9' },
+}
+
+function buildFluxPrompt(content, platform) {
   const clean = content.replace(/[#@\n\r]/g, ' ').replace(/\s+/g, ' ').trim()
   const postText = clean.substring(0, 300)
   const p = platform?.toLowerCase() || 'linkedin'
   return `Professional social media photo for ${p}, ${postText}, ultra high quality, sharp, vibrant colors, modern aesthetic, 4K, no text, no watermarks, photorealistic`
 }
 
-async function generateWithDalle(content, platform) {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) throw new Error('OpenAI API-nøkkel ikke konfigurert')
+async function generateWithFlux(content, platform) {
+  const apiKey = process.env.FAL_KEY
+  if (!apiKey) throw new Error('FAL_KEY ikke konfigurert')
 
-  const promptText = buildDallePrompt(content, platform)
-  console.log('[IMAGE] DALL-E fallback for:', platform)
+  const promptText = buildFluxPrompt(content, platform)
+  const size = PLATFORM_SIZES[platform?.toLowerCase()] || PLATFORM_SIZES.linkedin
+  console.log('[IMAGE] FLUX 1.1 Pro fallback for:', platform, size.aspect_ratio)
 
-  const aiRes = await fetch('https://api.openai.com/v1/images/generations', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'dall-e-3', prompt: promptText, n: 1,
-      size: '1792x1024', quality: 'standard', response_format: 'b64_json'
-    })
+  const result = await fal.subscribe('fal-ai/flux-pro/v1.1-ultra', {
+    input: {
+      prompt: promptText,
+      aspect_ratio: size.aspect_ratio,
+      output_format: 'png',
+      safety_tolerance: '5',
+    },
   })
 
-  if (!aiRes.ok) {
-    const errBody = await aiRes.text()
-    throw new Error(`DALL-E ${aiRes.status}: ${errBody.substring(0, 200)}`)
-  }
+  const imageUrl = result.data?.images?.[0]?.url
+  if (!imageUrl) throw new Error('Ingen bildedata i FLUX respons')
 
-  const json = await aiRes.json()
-  const b64 = json.data?.[0]?.b64_json
-  if (!b64) throw new Error('Ingen bildedata i DALL-E respons')
-
-  return `data:image/png;base64,${b64}`
+  // Fetch image and convert to base64
+  const imgRes = await fetch(imageUrl)
+  if (!imgRes.ok) throw new Error(`Kunne ikke laste ned FLUX-bilde: ${imgRes.status}`)
+  const buf = Buffer.from(await imgRes.arrayBuffer())
+  return `data:image/png;base64,${buf.toString('base64')}`
 }
 
 // POST /api/images/generate — unified image generation
-// Tries Puppeteer first (fast, free), falls back to DALL-E
+// Tries node-canvas first (fast, free), falls back to FLUX 1.1 Pro
 r.post('/generate', async (req, res) => {
   const { postId, content, text, platform, projectName } = req.body
   const imageText = text || content
@@ -54,19 +64,17 @@ r.post('/generate', async (req, res) => {
     let image = null
     let provider = null
 
-    if (IMAGE_PROVIDER !== 'dalle') {
-      // Try Puppeteer first
-      image = await renderBrandedImageSafe(imageText, platform, projectName, 5000)
-      if (image) provider = 'puppeteer'
-    }
+    // Try node-canvas first (free branded images)
+    image = await renderBrandedImageSafe(imageText, platform, projectName, 5000)
+    if (image) provider = 'canvas'
 
     if (!image) {
-      // Fall back to DALL-E
+      // Fall back to FLUX 1.1 Pro
       try {
-        image = await generateWithDalle(imageText, platform)
-        provider = 'dalle'
-      } catch (dalleErr) {
-        console.error('[IMAGE] DALL-E fallback also failed:', dalleErr.message)
+        image = await generateWithFlux(imageText, platform)
+        provider = 'flux'
+      } catch (fluxErr) {
+        console.error('[IMAGE] FLUX fallback also failed:', fluxErr.message)
         return res.status(500).json({ error: 'Bildegenerering feilet (begge metoder)' })
       }
     }

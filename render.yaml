@@ -54,6 +54,10 @@ services:
       - key: SENDGRID_FROM_EMAIL
         value: no-reply@yeeyoo.no
 
+      # Image Generation (FLUX 1.1 Pro via fal.ai)
+      - key: FAL_KEY
+        sync: false
+
       # AI Models
       - key: ANTHROPIC_API_KEY
         sync: false
