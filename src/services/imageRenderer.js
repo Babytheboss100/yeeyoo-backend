@@ -1,4 +1,4 @@
-import { createCanvas } from 'canvas'
+import { createCanvas } from '@napi-rs/canvas'
 
 const PLATFORM_ICONS = {
   linkedin: 'in', facebook: 'fb', instagram: 'ig',
@@ -180,7 +180,7 @@ export async function renderBrandedImage(text, platform, projectName) {
 export async function renderBrandedImageSafe(text, platform, projectName, timeoutMs = 5000) {
   return Promise.race([
     renderBrandedImage(text, platform, projectName).catch(e => {
-      console.error('[IMAGE] Canvas render failed:', e.message)
+      console.error('[IMAGE] Canvas render failed:', e.message, e.stack)
       return null
     }),
     new Promise(resolve => setTimeout(() => resolve(null), timeoutMs)),
