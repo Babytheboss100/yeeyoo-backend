@@ -32,7 +32,8 @@ async function generateWithFlux(content, platform) {
 
   const promptText = buildFluxPrompt(content, platform)
   const size = PLATFORM_SIZES[platform?.toLowerCase()] || PLATFORM_SIZES.linkedin
-  console.log('[IMAGE] FLUX 1.1 Pro fallback for:', platform, size.aspect_ratio)
+  console.log('[IMAGE] FLUX called — platform:', platform, '| aspect:', size.aspect_ratio)
+  console.log('[IMAGE] FLUX prompt:', promptText.substring(0, 200))
 
   const result = await fal.subscribe('fal-ai/flux-pro/v1.1-ultra', {
     input: {
@@ -43,8 +44,13 @@ async function generateWithFlux(content, platform) {
     },
   })
 
+  console.log('[IMAGE] FLUX response:', JSON.stringify({ images: result.data?.images?.length, requestId: result.requestId, keys: Object.keys(result.data || {}) }))
+
   const imageUrl = result.data?.images?.[0]?.url
-  if (!imageUrl) throw new Error('Ingen bildedata i FLUX respons')
+  if (!imageUrl) {
+    console.error('[IMAGE] FLUX no image URL in response:', JSON.stringify(result.data).substring(0, 500))
+    throw new Error('Ingen bildedata i FLUX respons')
+  }
 
   // Fetch image and convert to base64
   const imgRes = await fetch(imageUrl)
@@ -58,6 +64,7 @@ async function generateWithFlux(content, platform) {
 r.post('/generate', async (req, res) => {
   const { postId, content, text, platform, projectName } = req.body
   const imageText = text || content
+  console.log('[IMAGE] POST /generate hit — platform:', platform, '| postId:', postId, '| text length:', imageText?.length)
   if (!imageText) return res.status(400).json({ error: 'Tekst/innhold mangler' })
 
   try {
