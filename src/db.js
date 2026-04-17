@@ -231,6 +231,14 @@ export async function initDB() {
   await pool.query(`ALTER TABLE login_logs DROP CONSTRAINT IF EXISTS login_logs_user_id_fkey`)
   console.log('  FK constraints dropped OK')
 
+  // ─── Explicit column/default migrations (run every startup) ─────────────
+  await pool.query(`ALTER TABLE posts ADD COLUMN IF NOT EXISTS image_url TEXT`)
+  console.log('  ✓ posts.image_url ensured')
+  await pool.query(`ALTER TABLE login_logs ALTER COLUMN id SET DEFAULT gen_random_uuid()`)
+  console.log('  ✓ login_logs.id default ensured')
+  await pool.query(`ALTER TABLE notifications ALTER COLUMN id SET DEFAULT gen_random_uuid()`)
+  console.log('  ✓ notifications.id default ensured')
+
   // Fix id defaults on tables that may have UUID type but need text-compatible defaults
   await pool.query(`ALTER TABLE login_logs ALTER COLUMN id SET DEFAULT gen_random_uuid()::text`)
   await pool.query(`ALTER TABLE notifications ALTER COLUMN id SET DEFAULT gen_random_uuid()::text`)
