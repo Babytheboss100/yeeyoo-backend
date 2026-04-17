@@ -19,21 +19,35 @@ const PLATFORM_SIZES = {
   email:     { width: 1792, height: 1024, aspect_ratio: '16:9' },
 }
 
-function buildFluxPrompt(content, platform) {
+function buildFluxPrompt(content, platform, projectName) {
   const clean = content.replace(/[#@\n\r]/g, ' ').replace(/\s+/g, ' ').trim()
-  const postText = clean.substring(0, 300)
+  const postText = clean.substring(0, 250)
   const p = platform?.toLowerCase() || 'linkedin'
-  return `Professional social media photo for ${p}, ${postText}, ultra high quality, sharp, vibrant colors, modern aesthetic, 4K, no text, no watermarks, photorealistic`
+
+  // Build industry/business context from project name and post content
+  let context = ''
+  if (projectName) context += `, ${projectName}`
+
+  const keywords = postText.toLowerCase()
+  if (/fintech|finans|invest|lån|rente|crowdfund/i.test(keywords)) context += ', Norwegian fintech office, financial charts on screen, modern Scandinavian interior'
+  else if (/eiendom|bolig|leilighet|property/i.test(keywords)) context += ', Norwegian real estate, modern apartment building, Scandinavian architecture'
+  else if (/helse|trening|fitness|health/i.test(keywords)) context += ', health and wellness, modern gym, active lifestyle'
+  else if (/restaurant|mat|food|meny/i.test(keywords)) context += ', Nordic cuisine, restaurant interior, beautifully plated food'
+  else if (/tech|saas|software|ai|kode/i.test(keywords)) context += ', modern tech startup office, laptop and code, clean workspace'
+  else if (/butikk|handel|shop|produkt/i.test(keywords)) context += ', e-commerce, product photography, clean white background'
+  else context += ', professional business environment, modern Scandinavian office'
+
+  return `Professional photorealistic image for ${p} social media${context}, inspired by: ${postText}, ultra high quality, sharp focus, vibrant colors, modern aesthetic, 4K, no text overlay, no watermarks, no logos`
 }
 
-async function generateWithFlux(content, platform) {
+async function generateWithFlux(content, platform, projectName) {
   const apiKey = process.env.FAL_KEY
   if (!apiKey) throw new Error('FAL_KEY ikke konfigurert')
 
-  const promptText = buildFluxPrompt(content, platform)
+  const promptText = buildFluxPrompt(content, platform, projectName)
   const size = PLATFORM_SIZES[platform?.toLowerCase()] || PLATFORM_SIZES.linkedin
   console.log('[IMAGE] FLUX called — platform:', platform, '| aspect:', size.aspect_ratio)
-  console.log('[IMAGE] FLUX prompt:', promptText.substring(0, 200))
+  console.log('[IMAGE] FLUX prompt:', promptText.substring(0, 300))
 
   const result = await fal.subscribe('fal-ai/flux-pro/v1.1-ultra', {
     input: {
@@ -60,30 +74,33 @@ async function generateWithFlux(content, platform) {
 }
 
 // POST /api/images/generate — unified image generation
-// Tries node-canvas first (fast, free), falls back to FLUX 1.1 Pro
+// Tries FLUX 1.1 Pro first (real photos), falls back to node-canvas (branded)
 r.post('/generate', async (req, res) => {
   const { postId, content, text, platform, projectName } = req.body
   const imageText = text || content
-  console.log('[IMAGE] POST /generate hit — platform:', platform, '| postId:', postId, '| text length:', imageText?.length)
+  console.log('[IMAGE] POST /generate hit — platform:', platform, '| postId:', postId, '| project:', projectName, '| text length:', imageText?.length)
   if (!imageText) return res.status(400).json({ error: 'Tekst/innhold mangler' })
 
   try {
     let image = null
     let provider = null
 
-    // Try node-canvas first (free branded images)
-    image = await renderBrandedImageSafe(imageText, platform, projectName, 5000)
-    if (image) provider = 'canvas'
+    // Try FLUX 1.1 Pro first (real photorealistic images)
+    try {
+      image = await generateWithFlux(imageText, platform, projectName)
+      if (image) provider = 'flux'
+    } catch (fluxErr) {
+      console.error('[IMAGE] FLUX failed:', fluxErr.message)
+    }
+
+    // Fall back to node-canvas (free branded images)
+    if (!image) {
+      image = await renderBrandedImageSafe(imageText, platform, projectName, 5000)
+      if (image) provider = 'canvas'
+    }
 
     if (!image) {
-      // Fall back to FLUX 1.1 Pro
-      try {
-        image = await generateWithFlux(imageText, platform)
-        provider = 'flux'
-      } catch (fluxErr) {
-        console.error('[IMAGE] FLUX fallback also failed:', fluxErr.message)
-        return res.status(500).json({ error: 'Bildegenerering feilet (begge metoder)' })
-      }
+      return res.status(500).json({ error: 'Bildegenerering feilet (begge metoder)' })
     }
 
     // Save to post if postId provided
