@@ -69,8 +69,7 @@ function buildPrompts({ project, templateId, customPrompt, platform, extraContex
   const rules = PLATFORM_RULES[platform]
   const basePrompt = templateId === 'custom' ? customPrompt : template.prompt
   const ctx = project ? `\nBedrift: ${project.name}\nOm: ${project.about||'–'}\nTone: ${project.tone||'profesjonell'}\nMålgruppe: ${project.audience||'–'}\nNøkkelord: ${project.keywords||'–'}` : ''
-  // Only state facts the business has explicitly provided. Do not invent market statistics, rankings, or superlatives.
-  const factGuard = `\n\nVIKTIG — FAKTAREGLER:\n- ALDRI finn opp statistikk, tall eller prosenter (f.eks. "78% av bedrifter", "over 10 000 kunder")\n- ALDRI bruk uverifiserte påstander som "Norges første", "markedsledende", "beste i klassen"\n- ALDRI dikter opp rangeringer, priser eller plasseringer\n- BARE bruk fakta og tall som er eksplisitt oppgitt i bedriftsbeskrivelsen ovenfor\n- Hvis ingen tall er oppgitt, bruk generelt engasjerende språk uten spesifikke påstander\n- Erstatt fakta-hull med handlingsrettet språk, spørsmål eller verdiformidling`
+  const factGuard = `\n\nVIKTIG: Ikke oppfinn statistikk, fakta eller påstander som ikke er oppgitt av brukeren. Ikke bruk superlativ som 'Norges første' eller 'størst' uten at det er bekreftet. Bruk kun informasjon som er eksplisitt oppgitt i prosjektbeskrivelsen.`
   const system = `Du er en ekspert på digital markedsføring. Du skriver innhold for ${project?.name||'en bedrift'}.${ctx}\n\nPLATTFORM: ${platform.toUpperCase()}\nREGLER: ${rules.style}\nFORMAT: ${rules.format}\nMAKS TEGN: ${rules.maxChars}${factGuard}\n\nSvar KUN med selve innholdet — ingen forklaringer, bare teksten direkte.`
   const user = `OPPGAVE: ${basePrompt}\n${extraContext?`TILLEGGSKONTEKST: ${extraContext}`:''}\n\nGenerer ${platform}-innhold nå.`
   return { system, user }
