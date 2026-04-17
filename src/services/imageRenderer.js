@@ -102,10 +102,11 @@ export async function renderBrandedImage(text, platform, projectName) {
   ctx.textBaseline = 'middle'
   ctx.fillText(platLabel, PAD + 22, PAD + 20)
 
-  // ─── Post text ──────────────────────────────────────────────
+  // ─── Post text (first sentence or max 100 chars as headline) ─
   const safeText = text.replace(/\n+/g, ' ').trim()
-  const displayText = safeText.length > 400 ? safeText.substring(0, 397) + '...' : safeText
-  const fontSize = displayText.length > 250 ? 28 : displayText.length > 150 ? 34 : 40
+  const firstSentence = safeText.match(/^[^.!?]+[.!?]?/)?.[0] || safeText
+  const displayText = firstSentence.length > 100 ? firstSentence.substring(0, 97) + '...' : firstSentence
+  const fontSize = displayText.length > 80 ? 34 : displayText.length > 50 ? 40 : 48
 
   ctx.font = `600 ${fontSize}px "Segoe UI", Arial, sans-serif`
   ctx.fillStyle = '#f0f4ff'
