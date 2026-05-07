@@ -1,32 +1,17 @@
 import { Router } from 'express'
+import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
 
 const r = Router()
 r.use(auth)
 
-// ─── Self-healing table creation ────────────────────────────────────────────
-let tableVerified = false
+// ─── Self-healing table creation (deprecated) ───────────────────────────────
+// Konsolidert: smartplan_businesses → businesses (Prisma-eid). Funksjonen er
+// no-op nå, beholdt for å unngå å endre 5 kallsteder i samme PR. Fjernes i
+// cleanup-PR sammen med smartplan_businesses_legacy-tabellen.
 async function ensureSmartplanTable() {
-  if (tableVerified) return
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS smartplan_businesses (
-      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-      user_id TEXT NOT NULL,
-      url TEXT,
-      name TEXT,
-      description TEXT,
-      industry TEXT,
-      target_audience TEXT,
-      tone TEXT,
-      goals TEXT,
-      summary TEXT,
-      raw_data TEXT,
-      analysis JSONB,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `)
-  tableVerified = true
+  // no-op
 }
 
 // ─── Analyse a URL ──────────────────────────────────────────────────────────
@@ -103,12 +88,14 @@ Svar med denne eksakte JSON-strukturen:
       throw new Error('Kunne ikke tolke analyse-resultatet')
     }
 
-    // Save to database
+    // Save to database (Prisma-eid businesses-tabell — id genereres i kode,
+    // analysis er TEXT, updated_at kreves)
     console.log('Smartplan analyse: saving to DB for user', req.user.id)
     const { rows } = await pool.query(
-      `INSERT INTO smartplan_businesses (id, user_id, url, name, industry, summary, raw_data, analysis)
-       VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7::jsonb) RETURNING *`,
+      `INSERT INTO businesses (id, user_id, url, name, industry, summary, raw_data, analysis, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW()) RETURNING *`,
       [
+        crypto.randomUUID(),
         req.user.id,
         url,
         analysis.name || null,
@@ -138,7 +125,7 @@ r.post('/generate-month', async (req, res) => {
     // Fetch the business analysis
     console.log('generate-month: fetching business', businessId, 'for user', req.user.id)
     const { rows: bizRows } = await pool.query(
-      'SELECT * FROM smartplan_businesses WHERE id=$1 AND user_id=$2',
+      'SELECT * FROM businesses WHERE id=$1 AND user_id=$2',
       [businessId, req.user.id]
     )
     if (!bizRows.length) return res.status(404).json({ error: 'Bedrift ikke funnet' })
@@ -274,9 +261,9 @@ Generer nøyaktig ${selectedDays.length} innlegg. Varier innhold, pilarer og pla
       const scheduledAt = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}T${timeSlot}:00`
 
       const { rows } = await pool.query(
-        `INSERT INTO posts (id, user_id, platform, content, status, scheduled_at, smartplan_business_id, ai_model)
-         VALUES (gen_random_uuid(), $1, $2, $3, 'pending', $4, $5, 'claude') RETURNING *`,
-        [req.user.id, platform, post.content, scheduledAt, businessId]
+        `INSERT INTO posts (id, user_id, platform, content, status, scheduled_at, business_id, ai_model)
+         VALUES ($1, $2, $3, $4, 'pending', $5, $6, 'claude') RETURNING *`,
+        [crypto.randomUUID(), req.user.id, platform, post.content, scheduledAt, businessId]
       )
       savedPosts.push(rows[0])
     }
@@ -299,18 +286,18 @@ r.get('/calendar', async (req, res) => {
   try {
     await ensureSmartplanTable()
     let q = `
-      SELECT p.*, sb.name as business_name, sb.industry as business_industry,
+      SELECT p.*, b.name as business_name, b.industry as business_industry,
         COALESCE(p.scheduled_at, p.created_at) as calendar_date
       FROM posts p
-      LEFT JOIN smartplan_businesses sb ON p.smartplan_business_id = sb.id
+      LEFT JOIN businesses b ON p.business_id = b.id
       WHERE p.user_id = $1
-        AND p.smartplan_business_id IS NOT NULL
+        AND p.business_id IS NOT NULL
         AND COALESCE(p.scheduled_at, p.created_at) BETWEEN $2 AND $3
     `
     const params = [req.user.id, startDate, endDate]
 
     if (businessId) {
-      q += ` AND p.smartplan_business_id = $4`
+      q += ` AND p.business_id = $4`
       params.push(businessId)
     }
 
@@ -347,7 +334,7 @@ r.get('/businesses', async (req, res) => {
     await ensureSmartplanTable()
     console.log('Smartplan businesses: fetching for user', req.user.id)
     const { rows } = await pool.query(
-      'SELECT * FROM smartplan_businesses WHERE user_id = $1 ORDER BY created_at DESC',
+      'SELECT * FROM businesses WHERE user_id = $1 ORDER BY created_at DESC',
       [req.user.id]
     )
     console.log('Smartplan businesses: found', rows.length)

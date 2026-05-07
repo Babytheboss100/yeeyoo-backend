@@ -8,6 +8,29 @@ export const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 })
 
+// Post-ALTER verifikasjon mot information_schema.columns. Fanger silent
+// failures der ALTER returnerte uten å kaste, men endringen ikke faktisk
+// persisted (typisk: type-mismatch på DEFAULT-uttrykk, eller en annen
+// prosess som overstyrer schemaet senere). Returnerer true hvis state matcher
+// forventning; logger ⚠️ WARNING og returnerer false hvis ikke. Stille på
+// suksess slik at normal log-output forblir uendret.
+async function verifyColumn(table, column, { hasDefault = null } = {}) {
+  const { rows } = await pool.query(
+    `SELECT column_default FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2`,
+    [table, column]
+  )
+  if (rows.length === 0) {
+    console.warn(`  ⚠️ WARNING: ${table}.${column} mangler i schema — ALTER tok ikke effekt`)
+    return false
+  }
+  if (hasDefault === true && !rows[0].column_default) {
+    console.warn(`  ⚠️ WARNING: ${table}.${column} har ingen DEFAULT — SET DEFAULT tok ikke effekt`)
+    return false
+  }
+  return true
+}
+
 export async function initDB() {
   try {
     const dbUrl = new URL(process.env.DATABASE_URL || '')
@@ -234,13 +257,14 @@ export async function initDB() {
   // ─── Explicit column/default migrations (run every startup) ─────────────
   await pool.query(`ALTER TABLE posts ADD COLUMN IF NOT EXISTS image_url TEXT`)
   console.log('  ✓ posts.image_url ensured')
-  await pool.query(`ALTER TABLE login_logs ALTER COLUMN id SET DEFAULT gen_random_uuid()`)
-  console.log('  ✓ login_logs.id default ensured')
+  await verifyColumn('posts', 'image_url')
+  // login_logs.id eies av Prisma (TEXT NOT NULL uten DB-default). ALTER ... SET
+  // DEFAULT gen_random_uuid() har ikke faktisk effekt i prod (verifisert via
+  // \d login_logs); INSERT genererer nå id i kode via crypto.randomUUID().
   await pool.query(`ALTER TABLE notifications ALTER COLUMN id SET DEFAULT gen_random_uuid()`)
   console.log('  ✓ notifications.id default ensured')
 
   // Fix id defaults on tables that may have UUID type but need text-compatible defaults
-  await pool.query(`ALTER TABLE login_logs ALTER COLUMN id SET DEFAULT gen_random_uuid()::text`)
   await pool.query(`ALTER TABLE notifications ALTER COLUMN id SET DEFAULT gen_random_uuid()::text`)
   await pool.query(`ALTER TABLE posts ALTER COLUMN id SET DEFAULT gen_random_uuid()::text`)
   await pool.query(`ALTER TABLE projects ALTER COLUMN id SET DEFAULT gen_random_uuid()::text`)
@@ -249,6 +273,11 @@ export async function initDB() {
   await pool.query(`ALTER TABLE team_members ALTER COLUMN id SET DEFAULT gen_random_uuid()::text`)
   await pool.query(`ALTER TABLE seo_profiles ALTER COLUMN id SET DEFAULT gen_random_uuid()::text`)
   console.log('  id defaults fixed OK')
+  // Verifiser at SET DEFAULT-ALTER-ne faktisk persisted (Prisma-eide tabeller
+  // kan ha overstyrt schemaet). ⚠️ WARNING logges kun ved avvik.
+  for (const t of ['notifications', 'posts', 'projects', 'subscriptions', 'oauth_tokens', 'team_members', 'seo_profiles']) {
+    await verifyColumn(t, 'id', { hasDefault: true })
+  }
 
   // Ensure all columns exist on smartplan_businesses
   await pool.query(`ALTER TABLE smartplan_businesses ADD COLUMN IF NOT EXISTS summary TEXT`)
@@ -259,15 +288,14 @@ export async function initDB() {
   await pool.query(`ALTER TABLE smartplan_businesses ADD COLUMN IF NOT EXISTS goals TEXT`)
   await pool.query(`ALTER TABLE smartplan_businesses ADD COLUMN IF NOT EXISTS description TEXT`)
   console.log('  smartplan_businesses OK')
+  for (const c of ['summary', 'raw_data', 'industry', 'target_audience', 'tone', 'goals', 'description']) {
+    await verifyColumn('smartplan_businesses', c)
+  }
 
-  // Add smartplan_business_id column to posts
-  await pool.query(`
-    DO $$ BEGIN
-      ALTER TABLE posts ADD COLUMN smartplan_business_id TEXT;
-    EXCEPTION WHEN duplicate_column THEN NULL;
-    END $$;
-  `)
-  console.log('  posts.smartplan_business_id OK')
+  // posts.smartplan_business_id fjernet (mai 2026): smartplan-koblinger lagres
+  // nå via posts.business_id (Prisma-eid FK). Kolonnen ble aldri opprettet i
+  // prod (ALTER feilet stille mot Prisma-eid posts-tabell), og koden bruker
+  // ikke lenger smartplan_business_id.
 
   // Verify smartplan_businesses exists before proceeding
   const { rows: tableCheck } = await pool.query(
@@ -277,6 +305,30 @@ export async function initDB() {
     throw new Error('smartplan_businesses table was not created — aborting startup')
   }
   console.log('  smartplan_businesses verified ✓')
+
+  // ─── One-time data migration: smartplan_businesses → businesses ──────────
+  // Konsoliderer Yeeyoo's gamle backend-eide smartplan_businesses-tabell inn
+  // i Prisma's businesses (sannheten). Idempotent via ON CONFLICT — re-kjøring
+  // er trygt. to_regclass-guarden gjør blokken til no-op når legacy-tabellen
+  // ikke eksisterer (f.eks. fresh DBs) eller når den er droppet i cleanup-PR.
+  // Skipper rader uten url siden Prisma's businesses.url er NOT NULL.
+  const { rows: legacyExists } = await pool.query(
+    `SELECT to_regclass('public.smartplan_businesses') AS tbl`
+  )
+  if (legacyExists[0]?.tbl) {
+    const migration = await pool.query(`
+      INSERT INTO businesses (id, user_id, url, name, industry, summary, raw_data, analysis, created_at, updated_at)
+      SELECT id, user_id, url, name, industry, summary, raw_data,
+             CASE WHEN analysis IS NOT NULL THEN analysis::text ELSE NULL END,
+             created_at, NOW()
+      FROM smartplan_businesses
+      WHERE url IS NOT NULL
+      ON CONFLICT (id) DO NOTHING
+    `)
+    if (migration.rowCount > 0) {
+      console.log(`  Migrated ${migration.rowCount} smartplan_businesses → businesses`)
+    }
+  }
 
   // Bootstrap admin user
   const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'heljarprebensen@gmail.com'

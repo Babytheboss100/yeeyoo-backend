@@ -36,9 +36,11 @@ async function logLogin(user, req, method = 'email') {
       if (country?.includes('<')) country = null // HTML error page
     } catch {}
 
+    // Generer id eksplisitt: Prisma eier login_logs.id (TEXT NOT NULL uten
+    // DB-default — Prisma genererer UUID i JS). Raw INSERT må gjøre det samme.
     await pool.query(
-      'INSERT INTO login_logs (user_id, email, ip_address, user_agent, country, method) VALUES ($1,$2,$3,$4,$5,$6)',
-      [user.id, user.email, ip, ua.substring(0, 500), country, method]
+      'INSERT INTO login_logs (id, user_id, email, ip_address, user_agent, country, method) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+      [crypto.randomUUID(), user.id, user.email, ip, ua.substring(0, 500), country, method]
     )
   } catch (e) {
     console.error('Login log failed:', e.message)
