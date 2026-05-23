@@ -2,8 +2,15 @@ import rateLimit from 'express-rate-limit'
 
 // ─── CORS whitelist ──────────────────────────────────────────────────────────
 const ALLOWED_ORIGINS = [
+  // Eksisterende (backward compat)
   'https://yeeyoo.no',
-  'https://app.yeeyoo.no'
+  'https://app.yeeyoo.no',
+  'https://yeeyoo-frontend.vercel.app',
+  // Nye origins (yeeyoo.ai-lansering)
+  'https://yeeyoo.ai',
+  'https://www.yeeyoo.ai',
+  'https://yeeyoo.eu',
+  'https://yeeyoo-next.vercel.app'
 ]
 
 // Allow localhost in development
