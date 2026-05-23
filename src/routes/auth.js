@@ -118,7 +118,7 @@ r.post('/verify-invite', async (req, res) => {
 // ─── EMAIL/PASSWORD ───────────────────────────────────────────────────────────
 
 r.post('/register', validateRegister, async (req, res) => {
-  const { name, email, password, phone, address, inviteCode } = req.body
+  const { name, email, password, phone, address, inviteCode, returnTo } = req.body
   if (!name || !email || !password || !phone) return res.status(400).json({ error: 'Mangler felt' })
   try {
     // If invite code provided, validate and skip whitelist
@@ -153,8 +153,9 @@ r.post('/register', validateRegister, async (req, res) => {
         [email]
       )
     }
-    // Send verification email (non-blocking)
-    sendVerificationEmail(email, name, verifyToken)
+    // Send verification email (non-blocking). returnTo plukkes opp av
+    // /api/auth/verify-handleren etter at brukeren klikker lenken.
+    sendVerificationEmail(email, name, verifyToken, returnTo)
     res.status(201).json({
       needsVerification: true,
       message: 'Sjekk e-posten din for å aktivere kontoen.',
@@ -227,8 +228,8 @@ r.post('/refresh', async (req, res) => {
 
 // GET /auth/verify?token=xxx — verify email from link in mail
 r.get('/verify', async (req, res) => {
-  const { token } = req.query
-  const frontend = process.env.FRONTEND_URL || 'https://app.yeeyoo.no'
+  const { token, returnTo } = req.query
+  const frontend = resolveReturnTo(returnTo)
   if (!token) return res.redirect(`${frontend}?error=missing_token`)
 
   try {
@@ -240,10 +241,10 @@ r.get('/verify', async (req, res) => {
       [rows[0].id]
     )
 
-    // Auto-login: generate JWT and redirect
+    // Auto-login: generate JWT and redirect (sender både ?token og ?oauth_token
+    // for backward compat med gammel Vite-frontend)
     logLogin(rows[0], req, 'email-verify')
-    const jwt_token = signToken(rows[0])
-    res.redirect(`${frontend}?oauth_token=${jwt_token}&verified=true`)
+    res.redirect(buildAuthRedirect(frontend, signToken(rows[0]), rows[0].name, { verified: 'true' }))
   } catch (e) {
     console.error('Verify error:', e)
     res.redirect(`${frontend}?error=verify_failed`)
@@ -252,7 +253,7 @@ r.get('/verify', async (req, res) => {
 
 // POST /auth/resend-verification — resend verification email
 r.post('/resend-verification', async (req, res) => {
-  const { email } = req.body
+  const { email, returnTo } = req.body
   if (!email) return res.status(400).json({ error: 'E-post mangler' })
 
   try {
@@ -262,7 +263,7 @@ r.post('/resend-verification', async (req, res) => {
 
     const verifyToken = crypto.randomBytes(32).toString('hex')
     await pool.query('UPDATE users SET verify_token=$1 WHERE id=$2', [verifyToken, rows[0].id])
-    sendVerificationEmail(email, rows[0].name, verifyToken)
+    sendVerificationEmail(email, rows[0].name, verifyToken, returnTo)
     res.json({ message: 'Verifiseringsmail sendt. Sjekk innboksen din.' })
   } catch (e) {
     res.status(500).json({ error: e.message })
@@ -273,20 +274,68 @@ r.post('/resend-verification', async (req, res) => {
 // Docs: https://developer.vippsmobilepay.com/docs/APIs/login-api/
 
 const VIPPS_BASE = process.env.VIPPS_BASE_URL || 'https://api.vipps.no'
+
+// state → { returnTo | null }. createState() lager state'en og lagrer den
+// klienten ba om å bli sendt tilbake til. Auto-rydding etter 10 min.
 const pendingStates = new Map()
 
-function createState() {
+function createState(returnTo) {
   const state = crypto.randomBytes(20).toString('hex')
-  pendingStates.set(state, Date.now())
+  pendingStates.set(state, { returnTo: returnTo || null })
   setTimeout(() => pendingStates.delete(state), 600000)
   return state
+}
+
+// Same-origin OAuth-callback. Klienten sender ?returnTo=<full-url> og vi
+// validerer mot whitelist FØR vi redirecter — uten dette er endpointet et
+// open-redirect og en phishing-vektor.
+const ALLOWED_RETURN_HOSTS = [
+  'yeeyoo.ai',
+  'yeeyoo.no',
+  'yeeyoo.eu',
+  'app.yeeyoo.no',
+  'yeeyoo-next.vercel.app',
+]
+const ALLOWED_LOCALHOST_PORTS = new Set(['3000', '5173'])
+
+function resolveReturnTo(requested) {
+  const fallback = process.env.FRONTEND_URL || 'https://app.yeeyoo.no'
+  if (!requested) return fallback
+  try {
+    const u = new URL(requested)
+    const isLocalhost = u.hostname === 'localhost' || u.hostname === '127.0.0.1'
+    if (isLocalhost) {
+      return ALLOWED_LOCALHOST_PORTS.has(u.port) ? requested : fallback
+    }
+    if (u.protocol !== 'https:') return fallback
+    const hostOk = ALLOWED_RETURN_HOSTS.some(
+      (h) => u.hostname === h || u.hostname.endsWith('.' + h)
+    )
+    return hostOk ? requested : fallback
+  } catch {
+    return fallback
+  }
+}
+
+// Bygg redirect-URL med both ?token og ?oauth_token. Den nye yeeyoo-next-appen
+// leser ?token. Den gamle Vite-monolitten på app.yeeyoo.no leser ?oauth_token.
+// Sender begge så vi ikke breaker den live mens migreringen pågår.
+function buildAuthRedirect(target, token, name, extraParams = {}) {
+  const params = new URLSearchParams({
+    token,
+    oauth_token: token,
+    ...(name ? { name, oauth_name: name } : {}),
+    ...extraParams,
+  })
+  const sep = target.includes('?') ? '&' : '?'
+  return `${target}${sep}${params.toString()}`
 }
 
 r.get('/vipps', (req, res) => {
   if (!process.env.VIPPS_CLIENT_ID) return res.status(503).json({ error: 'Vipps ikke konfigurert' })
   const redirectUri = process.env.VIPPS_REDIRECT_URI ||
     `${process.env.BACKEND_URL || 'http://localhost:3001'}/api/auth/vipps/callback`
-  const state = createState()
+  const state = createState(req.query.returnTo)
   const params = new URLSearchParams({
     client_id: process.env.VIPPS_CLIENT_ID,
     response_type: 'code',
@@ -299,7 +348,8 @@ r.get('/vipps', (req, res) => {
 
 r.get('/vipps/callback', async (req, res) => {
   const { code, state, error: vErr } = req.query
-  const frontend = process.env.FRONTEND_URL || 'https://app.yeeyoo.no'
+  const stored = state ? pendingStates.get(state) : null
+  const frontend = resolveReturnTo(stored?.returnTo)
   if (vErr) return res.redirect(`${frontend}?error=vipps_denied`)
   if (!state || !pendingStates.has(state)) return res.redirect(`${frontend}?error=invalid_state`)
   pendingStates.delete(state)
@@ -341,7 +391,7 @@ r.get('/vipps/callback', async (req, res) => {
     })
 
     logLogin(user, req, 'vipps')
-    res.redirect(`${frontend}?oauth_token=${signToken(user)}&oauth_name=${encodeURIComponent(user.name)}`)
+    res.redirect(buildAuthRedirect(frontend, signToken(user), user.name))
   } catch (e) {
     console.error('Vipps error:', e)
     res.redirect(`${frontend}?error=${e.message==='invite_only'?'invite_only':'vipps_server'}`)
@@ -355,7 +405,7 @@ r.get('/google', (req, res) => {
   if (!process.env.GOOGLE_CLIENT_ID) return res.status(503).json({ error: 'Google ikke konfigurert' })
   const redirectUri = process.env.GOOGLE_REDIRECT_URI ||
     `${process.env.BACKEND_URL || 'http://localhost:3001'}/api/auth/google/callback`
-  const state = createState()
+  const state = createState(req.query.returnTo)
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID,
     redirect_uri: redirectUri,
@@ -370,7 +420,8 @@ r.get('/google', (req, res) => {
 
 r.get('/google/callback', async (req, res) => {
   const { code, state, error: gErr } = req.query
-  const frontend = process.env.FRONTEND_URL || 'https://app.yeeyoo.no'
+  const stored = state ? pendingStates.get(state) : null
+  const frontend = resolveReturnTo(stored?.returnTo)
   if (gErr) return res.redirect(`${frontend}?error=google_denied`)
   if (!state || !pendingStates.has(state)) return res.redirect(`${frontend}?error=invalid_state`)
   pendingStates.delete(state)
@@ -408,7 +459,7 @@ r.get('/google/callback', async (req, res) => {
     })
 
     logLogin(user, req, 'google')
-    res.redirect(`${frontend}?oauth_token=${signToken(user)}&oauth_name=${encodeURIComponent(user.name)}`)
+    res.redirect(buildAuthRedirect(frontend, signToken(user), user.name))
   } catch (e) {
     console.error('Google OAuth error:', e.stack || e.message)
     res.redirect(`${frontend}?error=${e.message==='invite_only'?'invite_only':'google_server'}&detail=${encodeURIComponent(e.message)}`)

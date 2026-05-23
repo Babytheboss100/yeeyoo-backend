@@ -32,8 +32,13 @@ export async function sendEmail(to, subject, html) {
   }
 }
 
-export async function sendVerificationEmail(email, name, token) {
-  const url = `${process.env.BACKEND_URL || 'http://localhost:3001'}/api/auth/verify?token=${token}`
+export async function sendVerificationEmail(email, name, token, returnTo) {
+  // Embed returnTo i verify-URL'en så /api/auth/verify-handleren kan redirecte
+  // brukeren tilbake til Yeeyoo-fronten brukeren signaliserte fra (yeeyoo.ai,
+  // yeeyoo.no, etc.) — host-whitelist håndteres serverside av resolveReturnTo.
+  const base = process.env.BACKEND_URL || 'http://localhost:3001'
+  const qs = new URLSearchParams({ token, ...(returnTo ? { returnTo } : {}) })
+  const url = `${base}/api/auth/verify?${qs.toString()}`
   return sendEmail(email, 'Bekreft e-postadressen din — Yeeyoo', `
     <!DOCTYPE html>
     <html><head><meta charset="utf-8"></head>
