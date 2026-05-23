@@ -311,8 +311,10 @@ r.get('/calendar', async (req, res) => {
 })
 
 // ─── Update post schedule ────────────────────────────────────────────────────
+// Tar imot både camelCase (scheduledAt) og snake_case (scheduled_at) for
+// kompatibilitet mellom legacy-frontend og yeeyoo-next.
 r.patch('/posts/:id/schedule', async (req, res) => {
-  const { scheduledAt } = req.body
+  const scheduledAt = req.body?.scheduledAt || req.body?.scheduled_at
   if (!scheduledAt) return res.status(400).json({ error: 'scheduledAt mangler' })
 
   try {
@@ -324,6 +326,99 @@ r.patch('/posts/:id/schedule', async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'Innlegg ikke funnet' })
     res.json(rows[0])
   } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ─── Approve / reject post (Sesjon I, PRIO 4) ────────────────────────────────
+r.post('/posts/:id/approve', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `UPDATE posts SET status = 'approved' WHERE id = $1 AND user_id = $2 RETURNING *`,
+      [req.params.id, req.user.id]
+    )
+    if (!rows.length) return res.status(404).json({ error: 'Innlegg ikke funnet' })
+    res.json({ post: rows[0] })
+  } catch (e) {
+    console.error('[smartplan/approve]', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+r.post('/posts/:id/reject', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `UPDATE posts SET status = 'rejected' WHERE id = $1 AND user_id = $2 RETURNING *`,
+      [req.params.id, req.user.id]
+    )
+    if (!rows.length) return res.status(404).json({ error: 'Innlegg ikke funnet' })
+    res.json({ post: rows[0] })
+  } catch (e) {
+    console.error('[smartplan/reject]', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// Regenerate: ber Claude skrive om posten med samme platform + samme business-
+// kontekst. Skriver over content-feltet og setter status tilbake til 'pending'.
+r.post('/posts/:id/regenerate', async (req, res) => {
+  try {
+    const { rows: postRows } = await pool.query(
+      `SELECT p.*, b.name AS biz_name, b.industry, b.analysis
+       FROM posts p
+       LEFT JOIN businesses b ON b.id = p.business_id
+       WHERE p.id = $1 AND p.user_id = $2`,
+      [req.params.id, req.user.id]
+    )
+    if (!postRows.length) return res.status(404).json({ error: 'Innlegg ikke funnet' })
+    const post = postRows[0]
+
+    const apiKey = process.env.ANTHROPIC_API_KEY
+    if (!apiKey) return res.status(503).json({ error: 'AI-provider ikke konfigurert' })
+
+    const analysis = typeof post.analysis === 'string'
+      ? (() => { try { return JSON.parse(post.analysis) } catch { return {} } })()
+      : (post.analysis || {})
+
+    const promptText = `Skriv om denne ${post.platform}-posten. Behold tema og intensjon, men endre vinkling og ordvalg så den føles fersk.
+
+BEDRIFT: ${post.biz_name || 'ukjent'}
+BRANSJE: ${post.industry || 'ukjent'}
+TONE: ${analysis.tone || 'profesjonell'}
+
+EKSISTERENDE POST:
+${post.content}
+
+Svar med KUN den nye posten — ingen forklaring, ingen markdown-wrapper.`
+
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 800,
+        messages: [{ role: 'user', content: promptText }],
+      }),
+    })
+    if (!aiRes.ok) {
+      const body = await aiRes.text()
+      throw new Error(`anthropic ${aiRes.status}: ${body.slice(0, 200)}`)
+    }
+    const data = await aiRes.json()
+    const newContent = (data.content?.[0]?.text || '').trim()
+    if (!newContent) throw new Error('Tom respons fra AI')
+
+    const { rows } = await pool.query(
+      `UPDATE posts SET content = $1, status = 'pending' WHERE id = $2 AND user_id = $3 RETURNING *`,
+      [newContent, req.params.id, req.user.id]
+    )
+    res.json({ post: rows[0] })
+  } catch (e) {
+    console.error('[smartplan/regenerate]', e.message)
     res.status(500).json({ error: e.message })
   }
 })
