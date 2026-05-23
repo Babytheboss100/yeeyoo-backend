@@ -18,6 +18,8 @@ import autopilotRoutes from './routes/autopilot.js'
 import imageRoutes from './routes/images.js'
 import affiliateRoutes from './routes/affiliate.js'
 import campaignRoutes from './routes/campaigns.js'
+import tonyRoutes from './routes/tony.js'
+import brandDnaRoutes from './routes/brand-dna.js'
 import { auth } from './middleware/auth.js'
 import { corsOptions, generalLimiter, generateLimiter, aiLimiter, suspiciousActivityLogger } from './middleware/security.js'
 import { trimStrings } from './middleware/sanitize.js'
@@ -65,6 +67,8 @@ app.use('/api/images/generate', aiLimiter)
 app.use('/api/seo/generate', aiLimiter)
 app.use('/api/autopilot/generate', aiLimiter)
 app.use('/api/smartplan/analyse', aiLimiter)
+app.use('/api/tony/chat', aiLimiter)
+app.use('/api/brand-dna/analyze', aiLimiter)
 
 // ─── Admin middleware ────────────────────────────────────────────────────────
 async function requireAdmin(req, res, next) {
@@ -87,6 +91,8 @@ app.use('/api/autopilot', autopilotRoutes)
 app.use('/api/images', imageRoutes)
 app.use('/api/affiliate', affiliateRoutes)
 app.use('/api/campaigns', campaignRoutes)
+app.use('/api/tony', tonyRoutes)
+app.use('/api/brand-dna', brandDnaRoutes)
 
 // ─── Onboarding ───────────────────────────────────────────────────────────────
 app.get('/api/onboarding/status', auth, async (req, res) => {
