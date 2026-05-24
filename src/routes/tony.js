@@ -11,6 +11,7 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
+import { checkAILimit, logAIUsage } from '../middleware/aiLimit.js'
 
 const r = Router()
 r.use(auth)
@@ -153,7 +154,7 @@ async function callGemini({ apiKey, model, messages }) {
 // POST /api/tony/chat
 //   body { projectId?, model, messages: [{role, content}], conversationId? }
 //   resp { reply, conversationId, message_id }
-r.post('/chat', async (req, res) => {
+r.post('/chat', checkAILimit('tony_chat'), async (req, res) => {
   const { projectId, model = 'claude', messages, conversationId } = req.body || {}
   if (!Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: 'messages må være ikke-tom liste' })
@@ -223,6 +224,9 @@ r.post('/chat', async (req, res) => {
       `UPDATE tony_conversations SET updated_at=NOW() WHERE id=$1`,
       [convoId]
     )
+
+    // 6) Logg AI-bruk (kostnadssporing + grensetelling)
+    await logAIUsage({ userId: req.user.id, endpoint: 'tony_chat', tokensIn, tokensOut })
 
     res.json({ reply, conversationId: convoId, message_id: asstMsgId })
   } catch (e) {

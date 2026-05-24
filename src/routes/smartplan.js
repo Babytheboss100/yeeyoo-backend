@@ -2,6 +2,7 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
+import { checkAILimit, logAIUsage } from '../middleware/aiLimit.js'
 
 const r = Router()
 r.use(auth)
@@ -119,7 +120,11 @@ async function analyzeAndCreateBusiness({ userId, projectId, url }) {
     [bizId, userId, projectId || null, url, dna.name || null, dna.industry || null, dna.summary || null, JSON.stringify(dna)]
   )
   console.log('[smartplan/generate-month] opprettet business', bizId, 'for project', projectId)
-  return rows[0]
+  // Returner business + token-bruk så generate-month kan summere kostnaden.
+  return {
+    business: rows[0],
+    usage: { tokensIn: aiData.usage?.input_tokens || 0, tokensOut: aiData.usage?.output_tokens || 0 },
+  }
 }
 
 // Bygger analyse-konteksten genereringen trenger fra EN av to kilder:
@@ -252,10 +257,14 @@ Svar med denne eksakte JSON-strukturen:
 })
 
 // ─── Generate a month of posts ──────────────────────────────────────────────
-r.post('/generate-month', async (req, res) => {
+r.post('/generate-month', checkAILimit('smart_planner'), async (req, res) => {
   // Body-kontrakt (yeeyoo-next planner): { projectId, url?, month, year, platforms }.
   // Bakoverkompatibel: { businessId, year, month } støttes fortsatt direkte.
   const { businessId, projectId, url, year, month, postsPerWeek = 3 } = req.body
+
+  // Akkumuler token-bruk over evt. analyse-kall + selve genereringen.
+  let aiTokensIn = 0
+  let aiTokensOut = 0
 
   try {
     await ensureSmartplanTable()
@@ -288,7 +297,10 @@ r.post('/generate-month', async (req, res) => {
         console.log('generate-month: business via project_id', projectId, '→', biz.id)
       } else if (url) {
         // Ingen business enda — analyser URL for å opprette en (brand_dna)
-        biz = await analyzeAndCreateBusiness({ userId: req.user.id, projectId, url })
+        const created = await analyzeAndCreateBusiness({ userId: req.user.id, projectId, url })
+        biz = created.business
+        aiTokensIn += created.usage.tokensIn
+        aiTokensOut += created.usage.tokensOut
       } else {
         return res.status(400).json({ error: 'URL kreves for første generering' })
       }
@@ -398,6 +410,8 @@ Generer nøyaktig ${selectedDays.length} innlegg. Varier innhold, pilarer og pla
     }
 
     const claudeData = await claudeRes.json()
+    aiTokensIn += claudeData.usage?.input_tokens || 0
+    aiTokensOut += claudeData.usage?.output_tokens || 0
     const genText = claudeData.content?.[0]?.text
     if (!genText) {
       console.error('generate-month: empty Claude response:', JSON.stringify(claudeData))
@@ -433,6 +447,9 @@ Generer nøyaktig ${selectedDays.length} innlegg. Varier innhold, pilarer og pla
       )
       savedPosts.push(rows[0])
     }
+
+    // Logg samlet AI-bruk (analyse-kall + genererings-kall) for kostnadssporing
+    await logAIUsage({ userId: req.user.id, endpoint: 'smart_planner', tokensIn: aiTokensIn, tokensOut: aiTokensOut })
 
     res.json({ posts: savedPosts, total: savedPosts.length })
   } catch (e) {

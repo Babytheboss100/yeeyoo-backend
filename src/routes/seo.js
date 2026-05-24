@@ -2,6 +2,7 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
+import { checkAILimit, logAIUsage } from '../middleware/aiLimit.js'
 
 const r = Router()
 r.use(auth)
@@ -37,7 +38,13 @@ r.get('/:projectId', async (req, res) => {
 
 // ─── POST /api/seo/generate ──────────────────────────────────────────
 // Action-dispatcher. Tilbakekompatibel: hvis ingen action → legacy.
-r.post('/generate', async (req, res) => {
+// Grensen 'seo' teller én SEO-rapport = action 'strategy' eller legacy-generering.
+// 'save' kaller ikke AI, og 'competitors' er et billig hjelpesteg som logges som
+// 'seo_competitors' (kostnadssporing) men ikke teller mot kvoten — ellers ville
+// én wizard-kjøring (competitors + strategy) brent to kvoteenheter.
+const seoSkip = (req) => ['save', 'competitors'].includes(req.body?.action)
+
+r.post('/generate', checkAILimit('seo', { skip: seoSkip }), async (req, res) => {
   const { action } = req.body || {}
 
   // Wizard-grener
@@ -87,6 +94,8 @@ Returner JSON med NØYAKTIG denne formen:
     const data = await aiRes.json()
     const raw = data.content?.[0]?.text || ''
     const json = JSON.parse((raw.match(/\{[\s\S]*\}/) || ['{}'])[0])
+    // Logg kostnad, men ikke mot 'seo'-kvoten (eget label).
+    await logAIUsage({ userId: req.user.id, endpoint: 'seo_competitors', tokensIn: data.usage?.input_tokens, tokensOut: data.usage?.output_tokens })
     res.json({
       competitors: Array.isArray(json.competitors) ? json.competitors : [],
       suggestedKeywords: Array.isArray(json.suggestedKeywords) ? json.suggestedKeywords : [],
@@ -145,6 +154,7 @@ Returner JSON med NØYAKTIG denne formen:
     const data = await aiRes.json()
     const raw = data.content?.[0]?.text || ''
     const json = JSON.parse((raw.match(/\{[\s\S]*\}/) || ['{}'])[0])
+    await logAIUsage({ userId: req.user.id, endpoint: 'seo', tokensIn: data.usage?.input_tokens, tokensOut: data.usage?.output_tokens })
     res.json(json)
   } catch (e) {
     console.error('[seo/generate strategy]', e.message)
@@ -259,6 +269,14 @@ Svar KUN med JSON, ingen annen tekst`
       JSON.stringify(seoData.blogIdeas),
       JSON.stringify(seoData.actionChecklist)
     ])
+
+    // Legacy bruker Gemini — usageMetadata har andre feltnavn enn Anthropic.
+    await logAIUsage({
+      userId: req.user.id,
+      endpoint: 'seo',
+      tokensIn: aiData.usageMetadata?.promptTokenCount,
+      tokensOut: aiData.usageMetadata?.candidatesTokenCount,
+    })
 
     res.json(rows[0])
   } catch (e) {

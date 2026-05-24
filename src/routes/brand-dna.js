@@ -15,6 +15,7 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
+import { checkAILimit, logAIUsage } from '../middleware/aiLimit.js'
 
 const r = Router()
 r.use(auth)
@@ -95,7 +96,7 @@ async function scrapeUrl(url) {
 }
 
 // ── POST /analyze ────────────────────────────────────────────────────
-r.post('/analyze', async (req, res) => {
+r.post('/analyze', checkAILimit('brand_dna'), async (req, res) => {
   const { projectId, url } = req.body || {}
   if (!url || !/^https?:\/\//i.test(url)) {
     return res.status(400).json({ error: 'Gyldig URL (med http/https) er påkrevd' })
@@ -179,6 +180,14 @@ r.post('/analyze', async (req, res) => {
         ]
       )
     }
+
+    // Logg AI-bruk (kostnadssporing + grensetelling)
+    await logAIUsage({
+      userId: req.user.id,
+      endpoint: 'brand_dna',
+      tokensIn: aiData.usage?.input_tokens,
+      tokensOut: aiData.usage?.output_tokens,
+    })
 
     res.json({ id: bizId, dna, url })
   } catch (e) {
