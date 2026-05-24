@@ -32,6 +32,7 @@ import youtubeRoutes from './routes/youtube.js'
 import redditRoutes from './routes/reddit.js'
 import streakRoutes from './routes/streak.js'
 import videoRoutes from './routes/video.js'
+import inspoRoutes from './routes/inspo.js'
 import { auth } from './middleware/auth.js'
 import { corsOptions, generalLimiter, generateLimiter, aiLimiter, suspiciousActivityLogger } from './middleware/security.js'
 import { trimStrings } from './middleware/sanitize.js'
@@ -119,6 +120,7 @@ app.use('/api/youtube', youtubeRoutes)
 app.use('/api/reddit', redditRoutes)
 app.use('/api/streak', streakRoutes)
 app.use('/api/video', videoRoutes)
+app.use('/api/inspo', inspoRoutes)
 
 // ─── Onboarding ───────────────────────────────────────────────────────────────
 app.get('/api/onboarding/status', auth, async (req, res) => {
