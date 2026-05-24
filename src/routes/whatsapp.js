@@ -15,6 +15,7 @@ import {
   sendWhatsAppMessage,
   verifyMetaSignature,
 } from '../lib/whatsapp.js'
+import { logAudit, maskPhone } from '../lib/audit.js'
 
 const r = Router()
 
@@ -154,6 +155,20 @@ r.post('/send', async (req, res) => {
       [crypto.randomUUID(), convo.id, text || null, template?.name || null, sent.metaMessageId]
     )
     await pool.query('UPDATE whatsapp_conversations SET last_message_at = NOW() WHERE id = $1', [convo.id])
+
+    await logAudit({
+      userId: req.user.id,
+      action: 'whatsapp.send',
+      resourceType: 'whatsapp_conversation',
+      resourceId: convo.id,
+      metadata: {
+        country: waba.country_code,
+        to: maskPhone(to),
+        template: template?.name || null,
+        hasText: !!text,
+        metaMessageId: sent.metaMessageId,
+      },
+    })
 
     res.json({ ok: true, conversationId: convo.id, metaMessageId: sent.metaMessageId })
   } catch (e) {

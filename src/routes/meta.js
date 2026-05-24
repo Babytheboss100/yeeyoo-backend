@@ -7,6 +7,7 @@ import { Router } from 'express'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
 import { resolveMetaAccount, postToFacebookPage, postToInstagram } from '../lib/meta.js'
+import { logAudit } from '../lib/audit.js'
 
 const r = Router()
 r.use(auth)
@@ -39,6 +40,10 @@ r.post('/facebook/post', async (req, res) => {
     const account = await resolveMetaAccount({ userId: req.user.id, projectId, accountId })
     if (!account || !account.active) return res.status(404).json({ error: 'Ingen aktiv Meta-konto funnet' })
     const result = await postToFacebookPage({ account, message, link, imageUrl })
+    await logAudit({
+      userId: req.user.id, action: 'facebook.post', resourceType: 'meta_account', resourceId: account.id,
+      metadata: { postId: result.id, projectId: projectId || account.project_id || null, hasImage: !!imageUrl, hasLink: !!link },
+    })
     res.json({ ok: true, platform: 'facebook', postId: result.id, displayName: account.display_name || account.page_name })
   } catch (e) {
     console.error('[meta/facebook/post]', e.message)
@@ -54,6 +59,10 @@ r.post('/instagram/post', async (req, res) => {
     const account = await resolveMetaAccount({ userId: req.user.id, projectId, accountId })
     if (!account || !account.active) return res.status(404).json({ error: 'Ingen aktiv Meta-konto funnet' })
     const result = await postToInstagram({ account, imageUrl, caption })
+    await logAudit({
+      userId: req.user.id, action: 'instagram.post', resourceType: 'meta_account', resourceId: account.id,
+      metadata: { mediaId: result.id, projectId: projectId || account.project_id || null, hasCaption: !!caption },
+    })
     res.json({ ok: true, platform: 'instagram', mediaId: result.id, displayName: account.display_name || account.ig_username })
   } catch (e) {
     console.error('[meta/instagram/post]', e.message)
