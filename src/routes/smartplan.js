@@ -14,6 +14,142 @@ async function ensureSmartplanTable() {
   // no-op
 }
 
+// ─── Brand-analyse (intern) ──────────────────────────────────────────────────
+// Speiler /api/brand-dna/analyze: scrape URL → Claude → strukturert brand_dna,
+// og oppretter en businesses-rad knyttet til prosjektet. Holdt lokalt i denne
+// fila for å unngå å røre den verifiserte brand-dna-ruten. Returnerer den nye
+// businesses-raden (samme form som SELECT *).
+const BRAND_SYSTEM = `Du er en norsk merkevare-strateg. Du analyserer nettsider og bygger en strukturert merkevareprofil. Svar ALLTID med gyldig JSON — ingen markdown, ingen forklaringer utenfor JSON-objektet.`
+
+const BRAND_PROMPT = (url, scraped) => `Analyser denne bedriften basert på nettsiden og tekstutdraget under.
+
+URL: ${url}
+
+TEKSTUTDRAG FRA NETTSIDEN (først 4000 tegn):
+${scraped.slice(0, 4000)}
+
+Generer en strukturert merkevareprofil som JSON med NØYAKTIG denne formen:
+{
+  "name": "Bedriftsnavn",
+  "industry": "Bransje",
+  "tone": "kort beskrivelse av tone",
+  "audience": { "age": "f.eks. 25-45", "demographics": "kort beskrivelse", "interests": ["i1", "i2", "i3"] },
+  "values": ["verdi1", "verdi2", "verdi3"],
+  "summary": "Ett-avsnitts oppsummering av merkevarens posisjonering"
+}
+
+VIKTIG:
+- Hvis du ikke har grunnlag for å gjette: bruk null for det feltet, ikke finn på data
+- Svar KUN med JSON, ingen annen tekst`
+
+async function scrapeUrl(url) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 10000)
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; YeeyooBrandBot/1.0)',
+        Accept: 'text/html,application/xhtml+xml,*/*',
+      },
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const html = await res.text()
+    const title = (html.match(/<title>([^<]*)<\/title>/i) || [, ''])[1].trim()
+    const desc = (html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i) || [, ''])[1]
+    const visibleText = html
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ')
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+    return [`TITLE: ${title}`, desc && `DESCRIPTION: ${desc}`, `BODY: ${visibleText.slice(0, 4000)}`]
+      .filter(Boolean).join('\n\n')
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function analyzeAndCreateBusiness({ userId, projectId, url }) {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error('AI-provider ikke konfigurert')
+
+  let scraped = ''
+  try {
+    scraped = await scrapeUrl(url)
+  } catch (e) {
+    console.warn('[smartplan/analyze] scrape feilet:', e.message)
+    scraped = `(klarte ikke å hente HTML — bare URL er kjent: ${url})`
+  }
+
+  const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1500,
+      system: BRAND_SYSTEM,
+      messages: [{ role: 'user', content: BRAND_PROMPT(url, scraped) }],
+    }),
+  })
+  if (!aiRes.ok) {
+    const body = await aiRes.text()
+    throw new Error(`anthropic ${aiRes.status}: ${body.slice(0, 200)}`)
+  }
+  const aiData = await aiRes.json()
+  const rawText = aiData.content?.[0]?.text || ''
+
+  let dna
+  try {
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/)
+    dna = JSON.parse(jsonMatch ? jsonMatch[0] : rawText)
+  } catch {
+    throw new Error('Kunne ikke tolke merkevare-analysen')
+  }
+
+  const bizId = crypto.randomUUID()
+  const { rows } = await pool.query(
+    `INSERT INTO businesses (id, user_id, project_id, url, name, industry, summary, brand_dna, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW()) RETURNING *`,
+    [bizId, userId, projectId || null, url, dna.name || null, dna.industry || null, dna.summary || null, JSON.stringify(dna)]
+  )
+  console.log('[smartplan/generate-month] opprettet business', bizId, 'for project', projectId)
+  return rows[0]
+}
+
+// Bygger analyse-konteksten genereringen trenger fra EN av to kilder:
+// `analysis` (TEXT, smartplan-form) eller `brand_dna` (JSONB, brand-dna-form).
+// Slik fungerer generering uansett om businessen kom fra Smart Planner-analyse
+// eller fra Brand DNA-flyten.
+function buildAnalysisContext(biz) {
+  let a = {}
+  if (biz.analysis) {
+    try { a = typeof biz.analysis === 'string' ? JSON.parse(biz.analysis) : biz.analysis } catch { a = {} }
+  }
+  let dna = {}
+  if (biz.brand_dna) {
+    try { dna = typeof biz.brand_dna === 'string' ? JSON.parse(biz.brand_dna) : biz.brand_dna } catch { dna = {} }
+  }
+  const audienceStr = dna.audience
+    ? [dna.audience.demographics, dna.audience.age, (dna.audience.interests || []).join('/')].filter(Boolean).join(', ')
+    : ''
+  const pick = (...vals) => vals.find((v) => Array.isArray(v) ? v.length : v)
+  return {
+    name: a.name || biz.name || 'Bedriften',
+    industry: a.industry || biz.industry || 'Generell',
+    summary: a.summary || dna.summary || biz.summary || '',
+    targetAudience: a.targetAudience || audienceStr || 'Generell',
+    toneOfVoice: a.toneOfVoice || dna.tone || 'Profesjonell men menneskelig',
+    contentPillars: pick(a.contentPillars, dna.values, ['Bransjenyheter', 'Tips', 'Kulissene', 'Kundehistorier']),
+    strengths: pick(a.strengths, dna.values, []),
+  }
+}
+
 // ─── Analyse a URL ──────────────────────────────────────────────────────────
 r.post('/analyse', async (req, res) => {
   const { url } = req.body
@@ -117,20 +253,50 @@ Svar med denne eksakte JSON-strukturen:
 
 // ─── Generate a month of posts ──────────────────────────────────────────────
 r.post('/generate-month', async (req, res) => {
-  const { businessId, year, month, postsPerWeek = 3 } = req.body
-  if (!businessId) return res.status(400).json({ error: 'businessId mangler' })
+  // Body-kontrakt (yeeyoo-next planner): { projectId, url?, month, year, platforms }.
+  // Bakoverkompatibel: { businessId, year, month } støttes fortsatt direkte.
+  const { businessId, projectId, url, year, month, postsPerWeek = 3 } = req.body
 
   try {
     await ensureSmartplanTable()
-    // Fetch the business analysis
-    console.log('generate-month: fetching business', businessId, 'for user', req.user.id)
-    const { rows: bizRows } = await pool.query(
-      'SELECT * FROM businesses WHERE id=$1 AND user_id=$2',
-      [businessId, req.user.id]
-    )
-    if (!bizRows.length) return res.status(404).json({ error: 'Bedrift ikke funnet' })
-    const biz = bizRows[0]
-    const analysis = typeof biz.analysis === 'string' ? JSON.parse(biz.analysis) : (biz.analysis || {})
+
+    // ── Finn (eller opprett) businessen som genereringen skal bygge på ──
+    let biz
+    if (businessId) {
+      console.log('generate-month: fetching business', businessId, 'for user', req.user.id)
+      const { rows } = await pool.query(
+        'SELECT * FROM businesses WHERE id=$1 AND user_id=$2',
+        [businessId, req.user.id]
+      )
+      if (!rows.length) return res.status(404).json({ error: 'Bedrift ikke funnet' })
+      biz = rows[0]
+    } else if (projectId) {
+      // Validér at brukeren eier prosjektet før oppslag
+      const { rows: projRows } = await pool.query(
+        'SELECT id FROM projects WHERE id=$1 AND user_id=$2',
+        [projectId, req.user.id]
+      )
+      if (!projRows.length) return res.status(404).json({ error: 'Prosjekt ikke funnet' })
+
+      // Slå opp business via project_id — nyeste hvis flere finnes
+      const { rows } = await pool.query(
+        'SELECT * FROM businesses WHERE project_id=$1 AND user_id=$2 ORDER BY created_at DESC LIMIT 1',
+        [projectId, req.user.id]
+      )
+      if (rows.length) {
+        biz = rows[0]
+        console.log('generate-month: business via project_id', projectId, '→', biz.id)
+      } else if (url) {
+        // Ingen business enda — analyser URL for å opprette en (brand_dna)
+        biz = await analyzeAndCreateBusiness({ userId: req.user.id, projectId, url })
+      } else {
+        return res.status(400).json({ error: 'URL kreves for første generering' })
+      }
+    } else {
+      return res.status(400).json({ error: 'projectId eller businessId kreves' })
+    }
+
+    const analysis = buildAnalysisContext(biz)
     console.log('generate-month: business found:', biz.name, '| analysis keys:', Object.keys(analysis))
 
     // Calculate post dates for the month
@@ -263,7 +429,7 @@ Generer nøyaktig ${selectedDays.length} innlegg. Varier innhold, pilarer og pla
       const { rows } = await pool.query(
         `INSERT INTO posts (id, user_id, platform, content, status, scheduled_at, business_id, ai_model)
          VALUES ($1, $2, $3, $4, 'pending', $5, $6, 'claude') RETURNING *`,
-        [crypto.randomUUID(), req.user.id, platform, post.content, scheduledAt, businessId]
+        [crypto.randomUUID(), req.user.id, platform, post.content, scheduledAt, biz.id]
       )
       savedPosts.push(rows[0])
     }
