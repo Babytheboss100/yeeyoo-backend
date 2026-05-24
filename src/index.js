@@ -33,6 +33,8 @@ import redditRoutes from './routes/reddit.js'
 import streakRoutes from './routes/streak.js'
 import videoRoutes from './routes/video.js'
 import inspoRoutes from './routes/inspo.js'
+import radarRoutes from './routes/radar.js'
+import { refreshAllActiveFeeds } from './lib/radar.js'
 import { auth } from './middleware/auth.js'
 import { corsOptions, generalLimiter, generateLimiter, aiLimiter, suspiciousActivityLogger } from './middleware/security.js'
 import { trimStrings } from './middleware/sanitize.js'
@@ -121,6 +123,7 @@ app.use('/api/reddit', redditRoutes)
 app.use('/api/streak', streakRoutes)
 app.use('/api/video', videoRoutes)
 app.use('/api/inspo', inspoRoutes)
+app.use('/api/radar', radarRoutes)
 
 // ─── Onboarding ───────────────────────────────────────────────────────────────
 app.get('/api/onboarding/status', auth, async (req, res) => {
@@ -246,6 +249,16 @@ async function start() {
     await initDB()
     console.log('DB init complete, starting server...')
     app.listen(PORT, () => console.log(`🚀 Yeeyoo backend v6.0 kjører på port ${PORT}`))
+
+    // Radar: daglig polling av aktive feeds (RSS + keyword). Første kjøring etter
+    // 1 min, deretter hver 24t. Feiler mykt — tar aldri ned serveren.
+    const DAY_MS = 24 * 60 * 60 * 1000
+    setTimeout(() => {
+      refreshAllActiveFeeds().catch((e) => console.error('[radar] poll-feil:', e.message))
+      setInterval(() => {
+        refreshAllActiveFeeds().catch((e) => console.error('[radar] poll-feil:', e.message))
+      }, DAY_MS)
+    }, 60 * 1000)
   } catch (e) {
     console.error('=== STARTUP CRASH ===')
     console.error('Error:', e.message)
