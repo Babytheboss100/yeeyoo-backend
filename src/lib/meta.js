@@ -5,6 +5,7 @@
 // settes manuelt.
 
 import { pool } from '../db.js'
+import { decryptToken } from './tokenCrypto.js'
 
 const GRAPH = 'https://graph.facebook.com/v21.0'
 
@@ -31,14 +32,15 @@ export async function resolveMetaAccount({ userId, projectId, accountId }) {
 
 export async function postToFacebookPage({ account, message, link, imageUrl }) {
   if (!account.page_id) throw new Error('Kontoen har ingen tilkoblet Facebook Page')
+  const accessToken = decryptToken(account.access_token)
   let url
   let payload
   if (imageUrl) {
     url = `${GRAPH}/${account.page_id}/photos`
-    payload = { url: imageUrl, caption: message || '', access_token: account.access_token }
+    payload = { url: imageUrl, caption: message || '', access_token: accessToken }
   } else {
     url = `${GRAPH}/${account.page_id}/feed`
-    payload = { message: message || '', ...(link ? { link } : {}), access_token: account.access_token }
+    payload = { message: message || '', ...(link ? { link } : {}), access_token: accessToken }
   }
   const res = await fetch(url, {
     method: 'POST',
@@ -58,11 +60,12 @@ export async function postToFacebookPage({ account, message, link, imageUrl }) {
 export async function postToInstagram({ account, imageUrl, caption }) {
   if (!account.ig_user_id) throw new Error('Kontoen har ingen tilkoblet Instagram-konto')
   if (!imageUrl) throw new Error('Instagram-innlegg krever imageUrl')
+  const accessToken = decryptToken(account.access_token)
 
   const createRes = await fetch(`${GRAPH}/${account.ig_user_id}/media`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image_url: imageUrl, caption: caption || '', access_token: account.access_token }),
+    body: JSON.stringify({ image_url: imageUrl, caption: caption || '', access_token: accessToken }),
   })
   const createData = await createRes.json().catch(() => ({}))
   if (!createRes.ok || !createData.id) {
@@ -74,7 +77,7 @@ export async function postToInstagram({ account, imageUrl, caption }) {
   const pubRes = await fetch(`${GRAPH}/${account.ig_user_id}/media_publish`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ creation_id: createData.id, access_token: account.access_token }),
+    body: JSON.stringify({ creation_id: createData.id, access_token: accessToken }),
   })
   const pubData = await pubRes.json().catch(() => ({}))
   if (!pubRes.ok || !pubData.id) {

@@ -28,6 +28,11 @@ services:
       - key: JWT_SECRET
         generateValue: true
 
+      # Token-kryptering (AES-256-GCM). MÅ være stabil — 64 hex-tegn (32 bytes).
+      # ALDRI generateValue her: endret nøkkel gjør krypterte tokens uleselige.
+      - key: META_TOKEN_ENCRYPTION_KEY
+        sync: false
+
       # Google OAuth2
       - key: GOOGLE_CLIENT_ID
         sync: false

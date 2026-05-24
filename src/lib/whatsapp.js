@@ -6,6 +6,7 @@
 
 import crypto from 'crypto'
 import { pool } from '../db.js'
+import { decryptToken } from './tokenCrypto.js'
 
 const GRAPH = 'https://graph.facebook.com/v21.0'
 
@@ -60,7 +61,7 @@ export async function sendWhatsAppMessage({ waba, to, text, template }) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${waba.system_user_token}`,
+      Authorization: `Bearer ${decryptToken(waba.system_user_token)}`,
     },
     body: JSON.stringify(payload),
   })
