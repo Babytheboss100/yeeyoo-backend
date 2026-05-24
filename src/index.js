@@ -35,6 +35,7 @@ import videoRoutes from './routes/video.js'
 import inspoRoutes from './routes/inspo.js'
 import radarRoutes from './routes/radar.js'
 import { refreshAllActiveFeeds } from './lib/radar.js'
+import inboxRoutes from './routes/inbox.js'
 import { auth } from './middleware/auth.js'
 import { corsOptions, generalLimiter, generateLimiter, aiLimiter, suspiciousActivityLogger } from './middleware/security.js'
 import { trimStrings } from './middleware/sanitize.js'
@@ -70,6 +71,8 @@ app.use(suspiciousActivityLogger)
 app.use('/api/billing/webhook', express.raw({ type: 'application/json' }))
 // WhatsApp (Meta) webhook trenger rå body for X-Hub-Signature-256-verifisering
 app.use('/api/whatsapp/webhook', express.raw({ type: 'application/json' }))
+// Inbox (IG/FB DM) webhook — samme rå-body-krav for signaturverifisering
+app.use('/api/inbox/webhook', express.raw({ type: 'application/json' }))
 app.use(express.json({ limit: '1mb' }))
 app.use(trimStrings)
 
@@ -124,6 +127,7 @@ app.use('/api/streak', streakRoutes)
 app.use('/api/video', videoRoutes)
 app.use('/api/inspo', inspoRoutes)
 app.use('/api/radar', radarRoutes)
+app.use('/api/inbox', inboxRoutes)
 
 // ─── Onboarding ───────────────────────────────────────────────────────────────
 app.get('/api/onboarding/status', auth, async (req, res) => {
