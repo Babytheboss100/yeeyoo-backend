@@ -24,6 +24,7 @@ import whatsappRoutes from './routes/whatsapp.js'
 import metaRoutes from './routes/meta.js'
 import auditRoutes from './routes/audit.js'
 import linkedinRoutes from './routes/linkedin.js'
+import xRoutes from './routes/x.js'
 import { auth } from './middleware/auth.js'
 import { corsOptions, generalLimiter, generateLimiter, aiLimiter, suspiciousActivityLogger } from './middleware/security.js'
 import { trimStrings } from './middleware/sanitize.js'
@@ -103,6 +104,7 @@ app.use('/api/whatsapp', whatsappRoutes)
 app.use('/api/meta', metaRoutes)
 app.use('/api/audit', auditRoutes)
 app.use('/api/linkedin', linkedinRoutes)
+app.use('/api/x', xRoutes)
 
 // ─── Onboarding ───────────────────────────────────────────────────────────────
 app.get('/api/onboarding/status', auth, async (req, res) => {
