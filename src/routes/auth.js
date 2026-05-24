@@ -199,9 +199,31 @@ r.post('/login', validateLogin, async (req, res) => {
 r.get('/me', auth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT id, name, email, auth_provider, is_admin, created_at FROM users WHERE id=$1', [req.user.id]
+      'SELECT id, name, email, auth_provider, is_admin, last_project_id, created_at FROM users WHERE id=$1', [req.user.id]
     )
     if (!rows[0]) return res.status(404).json({ error: 'Bruker ikke funnet' })
+    res.json(rows[0])
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// PATCH /me — oppdater brukerprofil. Foreløpig kun last_project_id (cross-device
+// persistens av sist valgte prosjekt). Verifiserer eierskap; null klarer feltet.
+r.patch('/me', auth, async (req, res) => {
+  const { last_project_id } = req.body || {}
+  try {
+    if (last_project_id) {
+      const { rows: own } = await pool.query(
+        'SELECT id FROM projects WHERE id=$1 AND user_id=$2', [last_project_id, req.user.id]
+      )
+      if (!own.length) return res.status(404).json({ error: 'Prosjekt ikke funnet' })
+    }
+    const { rows } = await pool.query(
+      `UPDATE users SET last_project_id=$1 WHERE id=$2
+       RETURNING id, name, email, auth_provider, is_admin, last_project_id, created_at`,
+      [last_project_id || null, req.user.id]
+    )
     res.json(rows[0])
   } catch (e) {
     res.status(500).json({ error: e.message })

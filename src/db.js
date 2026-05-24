@@ -175,6 +175,9 @@ export async function initDB() {
     -- Admin flag
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false;
 
+    -- Sist valgte prosjekt (cross-device persistens for ProjectSwitcher)
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_project_id TEXT;
+
     -- Referral code on users
     ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code VARCHAR(20) UNIQUE;
 
