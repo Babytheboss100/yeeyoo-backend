@@ -39,6 +39,7 @@ import inboxRoutes from './routes/inbox.js'
 import integrationsRoutes from './routes/integrations.js'
 import photoshootRoutes from './routes/photoshoot.js'
 import translateImageRoutes from './routes/translateImage.js'
+import moodboardRoutes from './routes/moodboard.js'
 import { auth } from './middleware/auth.js'
 import { corsOptions, generalLimiter, generateLimiter, aiLimiter, suspiciousActivityLogger } from './middleware/security.js'
 import { trimStrings } from './middleware/sanitize.js'
@@ -134,6 +135,7 @@ app.use('/api/inbox', inboxRoutes)
 app.use('/api/integrations', integrationsRoutes)
 app.use('/api/photoshoot', photoshootRoutes)
 app.use('/api/translate-image', translateImageRoutes)
+app.use('/api/moodboard', moodboardRoutes)
 
 // ─── Onboarding ───────────────────────────────────────────────────────────────
 app.get('/api/onboarding/status', auth, async (req, res) => {
