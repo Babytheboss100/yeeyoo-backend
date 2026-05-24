@@ -101,6 +101,18 @@ services:
       - key: TWITTER_CLIENT_SECRET
         sync: false
 
+      # OAuth-redirect-flyt (LinkedIn bruker LINKEDIN_* over)
+      - key: REDDIT_CLIENT_ID
+        sync: false
+      - key: REDDIT_CLIENT_SECRET
+        sync: false
+      - key: REDDIT_USER_AGENT
+        value: yeeyoo-saas/1.0
+      - key: PINTEREST_CLIENT_ID
+        sync: false
+      - key: PINTEREST_CLIENT_SECRET
+        sync: false
+
 databases:
   - name: yeeyoo-db
     region: frankfurt
