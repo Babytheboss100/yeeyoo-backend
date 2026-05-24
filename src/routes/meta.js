@@ -4,13 +4,33 @@
 // auto-connect: meta_accounts-rader settes manuelt (whitelabel-identitet per kunde).
 
 import { Router } from 'express'
+import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
 import { resolveMetaAccount, postToFacebookPage, postToInstagram } from '../lib/meta.js'
+import { encryptToken } from '../lib/tokenCrypto.js'
 import { logAudit } from '../lib/audit.js'
 
 const r = Router()
 r.use(auth)
+
+// POST /accounts — koble til FB Page / IG (token krypteres ved insert).
+r.post('/accounts', async (req, res) => {
+  const { projectId, pageId, pageName, igUserId, igUsername, accessToken, displayName } = req.body || {}
+  if (!accessToken || (!pageId && !igUserId)) {
+    return res.status(400).json({ error: 'accessToken og (pageId eller igUserId) kreves' })
+  }
+  try {
+    const id = crypto.randomUUID()
+    await pool.query(
+      `INSERT INTO meta_accounts (id, user_id, project_id, page_id, page_name, ig_user_id, ig_username, access_token, display_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [id, req.user.id, projectId || null, pageId || null, pageName || null, igUserId || null, igUsername || null, encryptToken(accessToken), displayName || null]
+    )
+    await logAudit({ userId: req.user.id, action: 'meta.connect', resourceType: 'meta_account', resourceId: id, metadata: { hasPage: !!pageId, hasIg: !!igUserId } })
+    res.json({ id })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
 
 // GET /accounts — tenant-isolert liste (uten access_token).
 r.get('/accounts', async (req, res) => {

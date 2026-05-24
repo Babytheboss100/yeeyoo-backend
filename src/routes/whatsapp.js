@@ -16,6 +16,7 @@ import {
   verifyMetaSignature,
 } from '../lib/whatsapp.js'
 import { logAudit, maskPhone } from '../lib/audit.js'
+import { encryptToken } from '../lib/tokenCrypto.js'
 
 const r = Router()
 
@@ -116,6 +117,26 @@ async function upsertInboundConversation(waba, customerPhone, customerName) {
 
 // ─── Alt under krever auth + er tenant-isolert ───────────────────────────────
 r.use(auth)
+
+// POST /accounts — registrer en WABA (admin only; WABA er business-global).
+// system_user_token krypteres ved insert.
+r.post('/accounts', async (req, res) => {
+  if (!req.user.is_admin) return res.status(403).json({ error: 'Kun admin kan registrere WhatsApp-numre' })
+  const { countryCode, phoneNumber, wabaId, phoneNumberId, displayName, systemUserToken } = req.body || {}
+  if (!countryCode || !phoneNumber || !wabaId || !phoneNumberId || !systemUserToken) {
+    return res.status(400).json({ error: 'countryCode, phoneNumber, wabaId, phoneNumberId og systemUserToken kreves' })
+  }
+  try {
+    const id = crypto.randomUUID()
+    await pool.query(
+      `INSERT INTO whatsapp_business_accounts (id, country_code, phone_number, waba_id, phone_number_id, display_name, system_user_token)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [id, countryCode, phoneNumber, wabaId, phoneNumberId, displayName || null, encryptToken(systemUserToken)]
+    )
+    await logAudit({ userId: req.user.id, action: 'whatsapp.connect', resourceType: 'whatsapp_business_account', resourceId: id, metadata: { countryCode } })
+    res.json({ id })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
 
 // POST /send — send tekst/template via WABA valgt på locale (eller låst til en
 // eksisterende samtale). Lagrer utgående melding under innloggende bruker.
