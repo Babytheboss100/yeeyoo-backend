@@ -28,6 +28,7 @@ import xRoutes from './routes/x.js'
 import tiktokRoutes from './routes/tiktok.js'
 import pinterestRoutes from './routes/pinterest.js'
 import threadsRoutes from './routes/threads.js'
+import youtubeRoutes from './routes/youtube.js'
 import { auth } from './middleware/auth.js'
 import { corsOptions, generalLimiter, generateLimiter, aiLimiter, suspiciousActivityLogger } from './middleware/security.js'
 import { trimStrings } from './middleware/sanitize.js'
@@ -111,6 +112,7 @@ app.use('/api/x', xRoutes)
 app.use('/api/tiktok', tiktokRoutes)
 app.use('/api/pinterest', pinterestRoutes)
 app.use('/api/threads', threadsRoutes)
+app.use('/api/youtube', youtubeRoutes)
 
 // ─── Onboarding ───────────────────────────────────────────────────────────────
 app.get('/api/onboarding/status', auth, async (req, res) => {
