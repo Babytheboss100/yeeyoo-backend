@@ -25,7 +25,10 @@ r.get('/me', async (req, res) => {
       alive,
     })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    // Manglende kolonne (streak_count/last_post_at) skal ikke gi 500 — degrader
+    // til en tom streak så UI-widgeten aldri brekker.
+    console.warn('[streak/me] degraderer:', e.message)
+    res.json({ streak_count: 0, stored_count: 0, last_post_at: null, alive: false })
   }
 })
 

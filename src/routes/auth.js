@@ -197,15 +197,26 @@ r.post('/login', validateLogin, async (req, res) => {
 })
 
 r.get('/me', auth, async (req, res) => {
+  // Kjernefelt kommer GARANTERT fra auth-middleware (req.user = id/name/email/
+  // is_admin). Valgfrie kolonner hentes separat med try/catch slik at /me ALDRI
+  // returnerer 500 og blokkerer login, selv om en kolonne mangler i den
+  // Prisma-eide users-tabellen (f.eks. auth_provider/last_project_id droppet av
+  // en Prisma db push). Login krever bare kjernefeltene.
+  const me = {
+    id: req.user.id,
+    name: req.user.name,
+    email: req.user.email,
+    is_admin: req.user.is_admin,
+  }
   try {
     const { rows } = await pool.query(
-      'SELECT id, name, email, auth_provider, is_admin, last_project_id, created_at FROM users WHERE id=$1', [req.user.id]
+      'SELECT auth_provider, last_project_id, created_at FROM users WHERE id=$1', [req.user.id]
     )
-    if (!rows[0]) return res.status(404).json({ error: 'Bruker ikke funnet' })
-    res.json(rows[0])
+    if (rows[0]) Object.assign(me, rows[0])
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    console.warn('[auth/me] valgfrie kolonner utilgjengelig:', e.message)
   }
+  res.json(me)
 })
 
 // PATCH /me — oppdater brukerprofil. Foreløpig kun last_project_id (cross-device
