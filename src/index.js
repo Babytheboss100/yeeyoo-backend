@@ -20,6 +20,7 @@ import affiliateRoutes from './routes/affiliate.js'
 import campaignRoutes from './routes/campaigns.js'
 import tonyRoutes from './routes/tony.js'
 import brandDnaRoutes from './routes/brand-dna.js'
+import whatsappRoutes from './routes/whatsapp.js'
 import { auth } from './middleware/auth.js'
 import { corsOptions, generalLimiter, generateLimiter, aiLimiter, suspiciousActivityLogger } from './middleware/security.js'
 import { trimStrings } from './middleware/sanitize.js'
@@ -53,6 +54,8 @@ app.use(suspiciousActivityLogger)
 
 // Webhook trenger raw body — må være FØR express.json()
 app.use('/api/billing/webhook', express.raw({ type: 'application/json' }))
+// WhatsApp (Meta) webhook trenger rå body for X-Hub-Signature-256-verifisering
+app.use('/api/whatsapp/webhook', express.raw({ type: 'application/json' }))
 app.use(express.json({ limit: '1mb' }))
 app.use(trimStrings)
 
@@ -93,6 +96,7 @@ app.use('/api/affiliate', affiliateRoutes)
 app.use('/api/campaigns', campaignRoutes)
 app.use('/api/tony', tonyRoutes)
 app.use('/api/brand-dna', brandDnaRoutes)
+app.use('/api/whatsapp', whatsappRoutes)
 
 // ─── Onboarding ───────────────────────────────────────────────────────────────
 app.get('/api/onboarding/status', auth, async (req, res) => {
