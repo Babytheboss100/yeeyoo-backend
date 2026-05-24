@@ -6,6 +6,7 @@
 
 import crypto from 'crypto'
 import { pool } from '../db.js'
+import { bumpStreak } from './streak.js'
 
 export function maskPhone(p) {
   if (!p) return null
@@ -22,5 +23,10 @@ export async function logAudit({ userId = null, action, resourceType = null, res
     )
   } catch (e) {
     console.error('[audit] logging feilet:', e.message)
+  }
+  // Streak: enhver vellykket sosial post ('*.post') teller. DM-er
+  // ('whatsapp.send') teller ikke. Fire-and-forget.
+  if (action && action.endsWith('.post') && userId) {
+    await bumpStreak(userId)
   }
 }

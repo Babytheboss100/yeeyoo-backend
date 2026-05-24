@@ -178,6 +178,10 @@ export async function initDB() {
     -- Sist valgte prosjekt (cross-device persistens for ProjectSwitcher)
     ALTER TABLE users ADD COLUMN IF NOT EXISTS last_project_id TEXT;
 
+    -- Streak gamification (HOLO Sesjon J)
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_count INTEGER DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_post_at TIMESTAMPTZ;
+
     -- Referral code on users
     ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code VARCHAR(20) UNIQUE;
 
