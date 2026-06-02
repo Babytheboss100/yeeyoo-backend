@@ -72,6 +72,7 @@ async function findOrCreateOAuthUser({ sub, email, name, provider }) {
   if (existing[0]) {
     // Existing user — always allow (they're already in the system)
   } else if (!await checkWhitelist(email)) {
+    console.warn('[invite_only] avvist e-post:', JSON.stringify(email))
     throw new Error('invite_only')
   }
 
