@@ -1,7 +1,7 @@
 import pg from 'pg'
 
 if (process.env.NODE_ENV !== 'test' || !process.env.YEEYOO_TEST_DATABASE_URL) throw new Error('Refusing to seed without NODE_ENV=test and an explicit YEEYOO_TEST_DATABASE_URL')
-const pool = new pg.Pool({ connectionString: process.env.YEEYOO_TEST_DATABASE_URL, ssl: false, max: 1 })
+const pool = new pg.Pool({ connectionString: process.env.YEEYOO_TEST_DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 1 })
 const users = [
   ['00000000-0000-4000-8000-000000000001', 'Tenant Alpha', 'alpha@yeeyoo.invalid'],
   ['00000000-0000-4000-8000-000000000002', 'Tenant Beta', 'beta@yeeyoo.invalid']
