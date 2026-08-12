@@ -5,8 +5,14 @@ const MIN_LEVEL = Object.freeze({ recommend: 0, create_draft: 1, create_plan: 2,
 const NEVER = new Set(['spend', 'increase_budget', 'connect', 'disconnect', 'delete', 'change_security'])
 
 const digest = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex')
-export function approvalFingerprint({ projectId, campaignId, artifactId, artifactVersion, budget, currency, channels }) {
-  return digest({ projectId, campaignId, artifactId, artifactVersion, budget, currency, channels: [...(channels || [])].sort() })
+export function approvalFingerprint({ action, userId, projectId, campaignId, planId, artifactId, artifactVersion, budget, currency, channels, policyVersion, providerConnectionId, providerConnectionVersion }) {
+  return digest({ action, userId, projectId, campaignId, planId: planId || null, artifactId, artifactVersion,
+    budget, currency, channels: [...(channels || [])].sort(), policyVersion, providerConnectionId, providerConnectionVersion })
+}
+
+function fingerprintsEqual(actual, expected) {
+  if (typeof actual !== 'string' || actual.length !== expected.length) return false
+  return crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(expected))
 }
 
 export function authorizeAutopilot({ policy, action, context, approval = null, now = Date.now() }) {
@@ -18,6 +24,8 @@ export function authorizeAutopilot({ policy, action, context, approval = null, n
   if (!Number.isInteger(policy.level) || policy.level < MIN_LEVEL[action] || policy.level > 3) return deny('AUTOPILOT_LEVEL_DENIED')
   if (action === 'publish' || action === 'send') {
     if (!approval || approval.status !== 'approved' || approval.revokedAt) return deny('VALID_APPROVAL_REQUIRED')
+    if (!approval.approvedByUserId || !approval.approvedAt) return deny('VALID_APPROVAL_REQUIRED')
+    if (approval.action !== action || approval.projectId !== context.projectId || approval.campaignId !== context.campaignId) return deny('APPROVAL_SCOPE_MISMATCH')
     if (!approval.expiresAt || Date.parse(approval.expiresAt) <= now) return deny('APPROVAL_EXPIRED')
     if (approval.usedAt || approval.nonce !== context.approvalNonce) return deny('APPROVAL_REPLAY_DENIED')
     if (!context.providerConnected) return deny('PROVIDER_CONNECTION_REVOKED')
@@ -26,8 +34,8 @@ export function authorizeAutopilot({ policy, action, context, approval = null, n
     const requestedBudget = Number(context.budget)
     const maximumBudget = Number(policy.maxBudget)
     if (!Number.isFinite(requestedBudget) || requestedBudget < 0 || !Number.isFinite(maximumBudget) || requestedBudget > maximumBudget || context.currency !== policy.currency) return deny('BUDGET_BOUNDARY_DENIED')
-    const expected = approvalFingerprint(context)
-    if (approval.fingerprint !== expected) return deny('APPROVED_STATE_CHANGED')
+    const expected = approvalFingerprint({ ...context, action, policyVersion: policy.version })
+    if (!fingerprintsEqual(approval.fingerprint, expected)) return deny('APPROVED_STATE_CHANGED')
   }
   return Object.freeze({ allowed: true, code: 'AUTHORIZED', audit: { action, projectId: context.projectId, campaignId: context.campaignId, policyLevel: policy.level, at: new Date(now).toISOString() } })
 }

@@ -50,7 +50,7 @@ r.post('/:id/resume', async (req, res) => {
     [req.params.id, projectId, req.user.id]
   )
   if (!rows[0]) return res.status(404).json({ error: 'Tony plan not found' })
-  const resume = resumeExecution(rows[0].graph)
+  const resume = resumeExecution(rows[0].graph, projectId)
   // Resume is intentionally advisory in Phase 12. A worker lease performs steps;
   // this endpoint never publishes, sends, spends, or marks work completed.
   res.json({ ...resume, idempotencyKey: key, executionStarted: false, message: 'Safe resume checkpoint created. Runnable steps await the worker.' })

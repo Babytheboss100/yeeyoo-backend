@@ -61,3 +61,12 @@ export async function cancelOwnedJob({ id, userId, projectId, db = pool }) {
     AND status IN ('queued','running') RETURNING *`, [id, userId, projectId])
   return decode(rows[0]) || null
 }
+
+export async function listOwnedJobs({userId,projectId,status=null,kind=null,limit=50,db=pool}){
+  const values=[userId,projectId];let where='user_id=$1 AND project_id=$2'
+  if(status){values.push(status);where+=` AND status=$${values.length}`}
+  if(kind){values.push(kind);where+=` AND kind=$${values.length}`}
+  values.push(Math.min(100,Math.max(1,Number(limit)||50)))
+  const {rows}=await db.query(`SELECT * FROM ai_jobs WHERE ${where} ORDER BY created_at DESC LIMIT $${values.length}`,values)
+  return rows.map(decode)
+}

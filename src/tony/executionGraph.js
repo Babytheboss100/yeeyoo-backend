@@ -3,7 +3,22 @@ const TRANSITIONS = Object.freeze({ planned: ['running', 'cancelled'], running: 
 
 export class ExecutionGraphError extends Error { constructor(code, message) { super(message); this.code = code } }
 
+export function assertExecutionGraph(plan, expectedProjectId = null) {
+  if (!plan || !plan.id || !plan.projectId || !Array.isArray(plan.steps)) throw new ExecutionGraphError('INVALID_EXECUTION_GRAPH', 'Execution graph is malformed')
+  if (expectedProjectId && plan.projectId !== expectedProjectId) throw new ExecutionGraphError('CROSS_PROJECT_EXECUTION_GRAPH', 'Execution graph belongs to another project')
+  const ids = new Set(plan.steps.map(step => step?.id))
+  if (ids.size !== plan.steps.length || ids.has(undefined)) throw new ExecutionGraphError('INVALID_EXECUTION_GRAPH', 'Execution step identifiers must be unique')
+  for (const step of plan.steps) {
+    if (!Array.isArray(step.dependencies) || step.dependencies.some(id => !ids.has(id) || id === step.id)) throw new ExecutionGraphError('INVALID_EXECUTION_GRAPH', 'Execution dependencies are invalid')
+  }
+  const visiting = new Set(), visited = new Set(), byId = new Map(plan.steps.map(step => [step.id, step]))
+  const visit = id => { if (visiting.has(id)) throw new ExecutionGraphError('INVALID_EXECUTION_GRAPH', 'Execution graph contains a dependency cycle'); if (visited.has(id)) return; visiting.add(id); for (const dependency of byId.get(id).dependencies) visit(dependency); visiting.delete(id); visited.add(id) }
+  for (const id of ids) visit(id)
+  return plan
+}
+
 export function runnableSteps(plan) {
+  assertExecutionGraph(plan)
   const byId = new Map(plan.steps.map(step => [step.id, step]))
   return plan.steps.filter(step => (step.status === 'planned' || step.status === 'failed') && step.dependencies.every(id => byId.get(id)?.status === 'completed'))
 }
@@ -27,5 +42,4 @@ export function transitionStep(plan, { stepId, from, to, idempotencyKey, aiJobId
   return Object.freeze({ ...plan, status, steps, updatedAt: timestamp })
 }
 
-export function resumeExecution(plan) { return Object.freeze({ planId: plan.id, projectId: plan.projectId, runnable: runnableSteps(plan).map(step => step.id), completed: plan.steps.filter(step => step.status === 'completed').map(step => step.id) }) }
-
+export function resumeExecution(plan, expectedProjectId = null) { assertExecutionGraph(plan, expectedProjectId); return Object.freeze({ planId: plan.id, projectId: plan.projectId, runnable: runnableSteps(plan).map(step => step.id), completed: plan.steps.filter(step => step.status === 'completed').map(step => step.id) }) }
