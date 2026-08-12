@@ -15,6 +15,19 @@ function fingerprintsEqual(actual, expected) {
   return crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(expected))
 }
 
+// pg returns snake_case persistence rows. Normalize once at the policy boundary
+// so consumed/revoked approvals can never be accidentally treated as fresh.
+export function normalizePersistedApproval(value) {
+  if (!value || typeof value !== 'object') return null
+  return Object.freeze({
+    status: value.status || (value.revoked_at ? 'revoked' : 'approved'),
+    action: value.action, projectId: value.projectId ?? value.project_id, campaignId: value.campaignId ?? value.campaign_id,
+    approvedByUserId: value.approvedByUserId ?? value.approved_by_user_id, approvedAt: value.approvedAt ?? value.approved_at,
+    expiresAt: value.expiresAt ?? value.expires_at, revokedAt: value.revokedAt ?? value.revoked_at,
+    usedAt: value.usedAt ?? value.consumedAt ?? value.consumed_at, nonce: value.nonce, fingerprint: value.fingerprint,
+  })
+}
+
 export function authorizeAutopilot({ policy, action, context, approval = null, now = Date.now() }) {
   const deny = (code) => Object.freeze({ allowed: false, code, audit: { action, projectId: context?.projectId || null, campaignId: context?.campaignId || null, at: new Date(now).toISOString() } })
   if (!policy || !context?.userId || !context?.projectId || !context?.campaignId) return deny('CONTEXT_REQUIRED')
@@ -23,10 +36,13 @@ export function authorizeAutopilot({ policy, action, context, approval = null, n
   if (!(action in MIN_LEVEL)) return deny('UNKNOWN_ACTION')
   if (!Number.isInteger(policy.level) || policy.level < MIN_LEVEL[action] || policy.level > 3) return deny('AUTOPILOT_LEVEL_DENIED')
   if (action === 'publish' || action === 'send') {
+    approval = normalizePersistedApproval(approval)
     if (!approval || approval.status !== 'approved' || approval.revokedAt) return deny('VALID_APPROVAL_REQUIRED')
     if (!approval.approvedByUserId || !approval.approvedAt) return deny('VALID_APPROVAL_REQUIRED')
     if (approval.action !== action || approval.projectId !== context.projectId || approval.campaignId !== context.campaignId) return deny('APPROVAL_SCOPE_MISMATCH')
-    if (!approval.expiresAt || Date.parse(approval.expiresAt) <= now) return deny('APPROVAL_EXPIRED')
+    const expiresAt = Date.parse(approval.expiresAt)
+    const approvedAt = Date.parse(approval.approvedAt)
+    if (!Number.isFinite(expiresAt) || !Number.isFinite(approvedAt) || approvedAt > now || expiresAt <= approvedAt || expiresAt <= now) return deny('APPROVAL_EXPIRED')
     if (approval.usedAt || approval.nonce !== context.approvalNonce) return deny('APPROVAL_REPLAY_DENIED')
     if (!context.providerConnected) return deny('PROVIDER_CONNECTION_REVOKED')
     const channels = context.channels || []

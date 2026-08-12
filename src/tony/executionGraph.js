@@ -4,12 +4,12 @@ const TRANSITIONS = Object.freeze({ planned: ['running', 'cancelled'], running: 
 export class ExecutionGraphError extends Error { constructor(code, message) { super(message); this.code = code } }
 
 export function assertExecutionGraph(plan, expectedProjectId = null) {
-  if (!plan || !plan.id || !plan.projectId || !Array.isArray(plan.steps)) throw new ExecutionGraphError('INVALID_EXECUTION_GRAPH', 'Execution graph is malformed')
+  if (!plan || !plan.id || !plan.projectId || !Array.isArray(plan.steps) || plan.steps.length === 0) throw new ExecutionGraphError('INVALID_EXECUTION_GRAPH', 'Execution graph is malformed')
   if (expectedProjectId && plan.projectId !== expectedProjectId) throw new ExecutionGraphError('CROSS_PROJECT_EXECUTION_GRAPH', 'Execution graph belongs to another project')
   const ids = new Set(plan.steps.map(step => step?.id))
   if (ids.size !== plan.steps.length || ids.has(undefined)) throw new ExecutionGraphError('INVALID_EXECUTION_GRAPH', 'Execution step identifiers must be unique')
   for (const step of plan.steps) {
-    if (!Array.isArray(step.dependencies) || step.dependencies.some(id => !ids.has(id) || id === step.id)) throw new ExecutionGraphError('INVALID_EXECUTION_GRAPH', 'Execution dependencies are invalid')
+    if (typeof step.id !== 'string' || !(step.status in TRANSITIONS) || !Array.isArray(step.dependencies) || !Array.isArray(step.outputArtifactIds) || step.dependencies.some(id => !ids.has(id) || id === step.id)) throw new ExecutionGraphError('INVALID_EXECUTION_GRAPH', 'Execution dependencies or state are invalid')
   }
   const visiting = new Set(), visited = new Set(), byId = new Map(plan.steps.map(step => [step.id, step]))
   const visit = id => { if (visiting.has(id)) throw new ExecutionGraphError('INVALID_EXECUTION_GRAPH', 'Execution graph contains a dependency cycle'); if (visited.has(id)) return; visiting.add(id); for (const dependency of byId.get(id).dependencies) visit(dependency); visiting.delete(id); visited.add(id) }
