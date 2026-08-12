@@ -1,21 +1,35 @@
 export const MARKETING_PROFILE_SCHEMA = 'yeeyoo.project-marketing-profile'
-export const MARKETING_PROFILE_VERSION = 1
-export const MARKETING_PROFILE_SCHEMA_VERSION = '1.0.0'
+export const MARKETING_PROFILE_VERSION = 2
+export const MARKETING_PROFILE_SCHEMA_VERSION = '2.0.0'
+export const DEFAULT_PROFILE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
 
 const array = (value) => Array.isArray(value) ? value : []
 const object = (value) => value && typeof value === 'object' && !Array.isArray(value) ? value : {}
 const safeJson = (value) => { try { return JSON.parse(value) } catch { return {} } }
 
-export function createMarketingProfile({ projectId, websiteUrl = null, data = {}, now = new Date().toISOString() }) {
+export function createMarketingProfile({ projectId, websiteUrl = null, data = {}, now = new Date().toISOString(), source = 'manual' }) {
   if (!projectId) throw new TypeError('projectId is required')
   const input = object(data)
   return {
     schema: MARKETING_PROFILE_SCHEMA, version: MARKETING_PROFILE_VERSION, schemaVersion: MARKETING_PROFILE_SCHEMA_VERSION, projectId, websiteUrl, updatedAt: now,
+    intelligence: {
+      generatedAt: input.intelligence?.generatedAt || now,
+      crawledAt: input.intelligence?.crawledAt || null,
+      source: input.intelligence?.source || source,
+      sources: array(input.intelligence?.sources),
+      provenance: array(input.intelligence?.provenance),
+    },
     brand: { summary: '', voice: [], values: [], visualIdentity: {}, ...object(input.brand) },
     audiences: array(input.audiences), offers: array(input.offers), competitors: array(input.competitors),
     keywords: array(input.keywords), channels: array(input.channels), funnel: array(input.funnel),
     objectives: array(input.objectives), risks: array(input.risks), evidence: array(input.evidence),
   }
+}
+
+export function profileFreshness(profile, { now = Date.now(), maxAgeMs = DEFAULT_PROFILE_MAX_AGE_MS } = {}) {
+  const timestamp = Date.parse(profile?.intelligence?.crawledAt || profile?.intelligence?.generatedAt || profile?.updatedAt || '')
+  const ageMs = Number.isFinite(timestamp) ? Math.max(0, now - timestamp) : Infinity
+  return { fresh: ageMs <= maxAgeMs, ageMs, maxAgeMs, referenceAt: Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null }
 }
 
 export function profileFromLegacyBusiness({ projectId, business }) {

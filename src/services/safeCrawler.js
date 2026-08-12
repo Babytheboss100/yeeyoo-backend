@@ -17,10 +17,17 @@ function blockedIp(address) {
     const n = address.split('.').map(Number)
     return n[0] === 0 || n[0] === 10 || n[0] === 127 || n[0] === 169 && n[1] === 254
       || n[0] === 172 && n[1] >= 16 && n[1] <= 31 || n[0] === 192 && n[1] === 168
-      || n[0] >= 224
+      || n[0] === 100 && n[1] >= 64 && n[1] <= 127 || n[0] === 192 && n[1] === 0
+      || n[0] === 198 && (n[1] === 18 || n[1] === 19) || n[0] >= 224
   }
   if (net.isIPv6(address)) {
     const ip = address.toLowerCase().split('%')[0]
+    const mappedHex = ip.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/)
+    if (mappedHex) {
+      const high = Number.parseInt(mappedHex[1], 16)
+      const low = Number.parseInt(mappedHex[2], 16)
+      return blockedIp(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`)
+    }
     return ip === '::' || ip === '::1' || ip.startsWith('fc') || ip.startsWith('fd')
       || ip.startsWith('fe8') || ip.startsWith('fe9') || ip.startsWith('fea') || ip.startsWith('feb')
       || ip.startsWith('ff') || ip.startsWith('::ffff:127.') || ip.startsWith('::ffff:10.')
@@ -29,13 +36,16 @@ function blockedIp(address) {
   return true
 }
 
-export async function validateCrawlUrl(input, { lookup = dns.lookup } = {}) {
+async function resolveCrawlTarget(input, { lookup = dns.lookup } = {}) {
   let url
   try { url = new URL(input) } catch { throw new CrawlError('INVALID_URL', 'Ugyldig URL') }
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
     throw new CrawlError('INVALID_URL', 'Kun HTTP(S)-URL uten credentials er tillatt')
   }
-  const host = url.hostname.toLowerCase().replace(/\.$/, '')
+  if (url.port && !((url.protocol === 'http:' && url.port === '80') || (url.protocol === 'https:' && url.port === '443'))) {
+    throw new CrawlError('BLOCKED_PORT', 'Kun standard HTTP(S)-porter er tillatt')
+  }
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '')
   if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) {
     throw new CrawlError('BLOCKED_TARGET', 'Lokale/private mål er blokkert')
   }
@@ -47,7 +57,11 @@ export async function validateCrawlUrl(input, { lookup = dns.lookup } = {}) {
   }
   url.hostname = host
   url.hash = ''
-  return url
+  return { url, addresses: Object.freeze(literal.map(({ address }) => address)) }
+}
+
+export async function validateCrawlUrl(input, options = {}) {
+  return (await resolveCrawlTarget(input, options)).url
 }
 
 function normalizeType(value) { return String(value || '').split(';', 1)[0].trim().toLowerCase() }
@@ -59,11 +73,12 @@ export async function safeCrawl(input, options = {}) {
   const maxBytes = options.maxBytes ?? CRAWL_LIMITS.maxBytes
   const maxRedirects = options.maxRedirects ?? CRAWL_LIMITS.maxRedirects
   const allowedTypes = options.allowedTypes || ['text/html', 'application/xhtml+xml', 'application/rss+xml', 'application/atom+xml', 'application/xml', 'text/xml']
-  let current = await validateCrawlUrl(input, { lookup })
+  let validated = await resolveCrawlTarget(input, { lookup })
   for (let redirects = 0; redirects <= maxRedirects; redirects++) {
+    const current = validated.url
     let response
     try {
-      response = await fetchImpl(current, { redirect: 'manual', signal: AbortSignal.timeout(timeoutMs), headers: { 'User-Agent': 'YeeyooCrawler/1.0', Accept: allowedTypes.join(', ') } })
+      response = await fetchImpl(current, { redirect: 'manual', signal: AbortSignal.timeout(timeoutMs), headers: { 'User-Agent': 'YeeyooCrawler/1.0', Accept: allowedTypes.join(', ') }, yeeyooApprovedAddresses: validated.addresses })
     } catch (error) {
       throw new CrawlError(error?.name === 'TimeoutError' ? 'TIMEOUT' : 'FETCH_FAILED', error?.name === 'TimeoutError' ? 'Henting tok for lang tid' : 'Kunne ikke hente URL', 502)
     }
@@ -71,7 +86,7 @@ export async function safeCrawl(input, options = {}) {
       if (redirects === maxRedirects) throw new CrawlError('TOO_MANY_REDIRECTS', 'For mange redirects', 502)
       const location = response.headers.get('location')
       if (!location) throw new CrawlError('INVALID_REDIRECT', 'Redirect mangler mål', 502)
-      current = await validateCrawlUrl(new URL(location, current).href, { lookup })
+      validated = await resolveCrawlTarget(new URL(location, current).href, { lookup })
       continue
     }
     if (!response.ok) throw new CrawlError('HTTP_ERROR', `Upstream svarte HTTP ${response.status}`, 502)
@@ -93,7 +108,7 @@ export async function safeCrawl(input, options = {}) {
     const bytes = new Uint8Array(size)
     let offset = 0
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength }
-    return { url: current.href, contentType: type, body: new TextDecoder().decode(bytes), bytes: size }
+    return { url: current.href, contentType: type, body: new TextDecoder().decode(bytes), bytes: size, resolvedAddresses: validated.addresses }
   }
   throw new CrawlError('TOO_MANY_REDIRECTS', 'For mange redirects', 502)
 }

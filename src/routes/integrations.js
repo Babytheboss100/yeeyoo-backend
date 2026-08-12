@@ -5,13 +5,14 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
-import { enforceProjectOwnership } from '../middleware/project.js'
+import { enforceProjectOwnership, requireProject, sendProjectError } from '../middleware/project.js'
 import { encryptToken, decryptToken } from '../lib/tokenCrypto.js'
 import { logAudit } from '../lib/audit.js'
 import {
   klaviyoSubscribe, klaviyoSendCampaign,
   mailchimpSubscribe, mailchimpSendCampaign,
 } from '../lib/emailProviders.js'
+import { toChannelConnection } from '../lib/channelConnections.js'
 
 const r = Router()
 r.use(auth)
@@ -19,8 +20,8 @@ r.use(enforceProjectOwnership)
 
 const PROVIDERS = ['klaviyo', 'mailchimp']
 
-async function getIntegration(userId, provider) {
-  const { rows } = await pool.query('SELECT * FROM email_integrations WHERE user_id=$1 AND provider=$2', [userId, provider])
+async function getIntegration(userId, projectId, provider) {
+  const { rows } = await pool.query('SELECT * FROM email_integrations WHERE user_id=$1 AND project_id=$2 AND provider=$3', [userId, projectId, provider])
   if (!rows[0]) return null
   return { ...rows[0], apiKey: decryptToken(rows[0].api_key) }
 }
@@ -31,40 +32,45 @@ r.post('/:provider/connect', async (req, res) => {
   const provider = req.params.provider
   if (!PROVIDERS.includes(provider)) return res.status(400).json({ error: 'Ukjent provider' })
   const { projectId, apiKey, listId } = req.body || {}
-  if (!apiKey) return res.status(400).json({ error: 'apiKey kreves' })
+  if (!projectId || !apiKey) return res.status(400).json({ error: 'projectId og apiKey kreves' })
   try {
     const serverPrefix = provider === 'mailchimp' ? (apiKey.split('-')[1] || null) : null
     await pool.query(
       `INSERT INTO email_integrations (id, user_id, project_id, provider, api_key, list_id, server_prefix)
        VALUES ($1,$2,$3,$4,$5,$6,$7)
-       ON CONFLICT (user_id, provider)
+       ON CONFLICT (project_id, provider) WHERE project_id IS NOT NULL
        DO UPDATE SET api_key=EXCLUDED.api_key, list_id=EXCLUDED.list_id, server_prefix=EXCLUDED.server_prefix, project_id=EXCLUDED.project_id, active=TRUE`,
       [crypto.randomUUID(), req.user.id, projectId || null, provider, encryptToken(apiKey), listId || null, serverPrefix]
     )
     await logAudit({ userId: req.user.id, action: 'integration.connect', resourceType: 'email_integration', resourceId: provider, metadata: { provider } })
-    res.json({ ok: true, provider })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+    res.json({ ok: true, provider, projectId })
+  } catch (e) { if (!sendProjectError(res, e)) res.status(500).json({ error: 'Kunne ikke lagre integrasjonen' }) }
 })
 
 // GET / — koblede integrasjoner (uten nøkler).
 r.get('/', async (req, res) => {
+  const { projectId } = req.query
+  if (!projectId) return res.status(400).json({ error: 'projectId kreves' })
   try {
+    await requireProject(req, projectId)
     const { rows } = await pool.query(
-      `SELECT provider, list_id, server_prefix, active, project_id, created_at
-       FROM email_integrations WHERE user_id=$1`, [req.user.id]
+      `SELECT id, provider, list_id, server_prefix, active, project_id, created_at,
+              last_verified_at, last_error
+       FROM email_integrations WHERE user_id=$1 AND project_id=$2`, [req.user.id, projectId]
     )
-    res.json(rows)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+    res.json(rows.map((row) => ({ ...toChannelConnection(row, row.provider), listId: row.list_id || null })))
+  } catch (e) { if (!sendProjectError(res, e)) res.status(500).json({ error: 'Kunne ikke hente integrasjoner' }) }
 })
 
 // POST /:provider/sync-contacts — { contacts:[{email,firstName?,lastName?}], listId? }
 r.post('/:provider/sync-contacts', async (req, res) => {
   const provider = req.params.provider
   if (!PROVIDERS.includes(provider)) return res.status(400).json({ error: 'Ukjent provider' })
-  const { contacts, listId } = req.body || {}
+  const { projectId, contacts, listId } = req.body || {}
+  if (!projectId) return res.status(400).json({ error: 'projectId kreves' })
   if (!Array.isArray(contacts) || contacts.length === 0) return res.status(400).json({ error: 'contacts[] kreves' })
   try {
-    const integ = await getIntegration(req.user.id, provider)
+    const integ = await getIntegration(req.user.id, projectId, provider)
     if (!integ || !integ.active) return res.status(404).json({ error: `${provider} ikke koblet` })
     if (listId) integ.list_id = listId
     const fn = provider === 'klaviyo' ? klaviyoSubscribe : mailchimpSubscribe
@@ -81,10 +87,11 @@ r.post('/:provider/sync-contacts', async (req, res) => {
 r.post('/:provider/send-campaign', async (req, res) => {
   const provider = req.params.provider
   if (!PROVIDERS.includes(provider)) return res.status(400).json({ error: 'Ukjent provider' })
-  const { subject, fromName, replyTo, html, listId } = req.body || {}
+  const { projectId, subject, fromName, replyTo, html, listId } = req.body || {}
+  if (!projectId) return res.status(400).json({ error: 'projectId kreves' })
   if (!subject || !html) return res.status(400).json({ error: 'subject og html kreves' })
   try {
-    const integ = await getIntegration(req.user.id, provider)
+    const integ = await getIntegration(req.user.id, projectId, provider)
     if (!integ || !integ.active) return res.status(404).json({ error: `${provider} ikke koblet` })
     if (listId) integ.list_id = listId
     const cfg = { apiKey: integ.apiKey, serverPrefix: integ.server_prefix, listId: integ.list_id }

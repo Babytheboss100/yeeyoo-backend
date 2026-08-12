@@ -10,7 +10,7 @@ export async function getMarketingProfile({ userId, projectId, db = pool }) {
 }
 
 export async function saveMarketingProfile({ userId, projectId, profile, source = 'manual', db = pool }) {
-  const canonical = createMarketingProfile({ projectId, websiteUrl: profile.websiteUrl, data: profile })
+  const canonical = createMarketingProfile({ projectId, websiteUrl: profile.websiteUrl, data: profile, source })
   const { rows } = await db.query(`INSERT INTO project_marketing_profiles (id,user_id,project_id,version,website_url,profile,source,updated_at)
     VALUES ($1,$2,$3,$4,$5,$6,$7,NOW()) ON CONFLICT (project_id) DO UPDATE SET version=EXCLUDED.version,
     website_url=EXCLUDED.website_url,profile=EXCLUDED.profile,source=EXCLUDED.source,updated_at=NOW()

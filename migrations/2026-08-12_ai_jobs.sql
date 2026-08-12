@@ -21,4 +21,3 @@ CREATE TABLE IF NOT EXISTS ai_jobs (
 );
 CREATE INDEX IF NOT EXISTS ai_jobs_owner_project_created_idx ON ai_jobs(user_id, project_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS ai_jobs_status_created_idx ON ai_jobs(status, created_at);
-
