@@ -9,7 +9,11 @@ import crypto from 'crypto'
 import { pool } from '../db.js'
 import { encryptToken } from './tokenCrypto.js'
 
-const BACKEND = () => process.env.BACKEND_URL || 'https://yeeyoo-backend.onrender.com'
+const BACKEND = () => {
+  const value = process.env.BACKEND_URL || (process.env.NODE_ENV === 'production' ? null : 'http://localhost:3001')
+  if (!value) throw new Error('BACKEND_URL mangler')
+  return value.replace(/\/$/, '')
+}
 const redirectUri = (p) => `${BACKEND()}/api/oauth/${p}/callback`
 const basic = (id, secret) => 'Basic ' + Buffer.from(`${id}:${secret}`).toString('base64')
 const REDDIT_UA = process.env.REDDIT_USER_AGENT || 'yeeyoo-saas/1.0'

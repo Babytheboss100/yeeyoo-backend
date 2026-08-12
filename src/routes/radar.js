@@ -5,11 +5,13 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
+import { enforceProjectOwnership } from '../middleware/project.js'
 import { fetchAndParseFeed, keywordFeedUrl, ingestFeed, refreshAllActiveFeeds } from '../lib/radar.js'
 import { logAudit } from '../lib/audit.js'
 
 const r = Router()
 r.use(auth)
+r.use(enforceProjectOwnership)
 
 // POST /feeds — { projectId?, url?, keyword?, lang? }. url → RSS-feed, keyword →
 // Google News RSS-søk. Henter items umiddelbart.

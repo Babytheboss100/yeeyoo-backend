@@ -32,7 +32,8 @@ r.get('/:provider/start', auth, async (req, res) => {
 r.get('/:provider/callback', async (req, res) => {
   const provider = req.params.provider
   const p = PROVIDERS[provider]
-  const FRONT = process.env.FRONTEND_URL || 'https://app.yeeyoo.no'
+  const FRONT = process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production' ? null : 'http://localhost:3000')
+  if (!FRONT) return res.status(503).json({ error: 'FRONTEND_URL mangler' })
   const done = (qs) => res.redirect(`${FRONT}/dashboard/connections?${qs}`)
   if (!p) return done('error=unknown_provider')
   const { code, state, error } = req.query

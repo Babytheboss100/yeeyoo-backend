@@ -2,9 +2,11 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
+import { enforceProjectOwnership, requireProject, sendProjectError } from '../middleware/project.js'
 
 const r = Router()
 r.use(auth)
+r.use(enforceProjectOwnership)
 
 // GET /team/:projectId — list team members
 r.get('/:projectId', async (req, res) => {
@@ -12,8 +14,8 @@ r.get('/:projectId', async (req, res) => {
     const { rows } = await pool.query(
       `SELECT tm.*, u.name as user_name FROM team_members tm
        LEFT JOIN users u ON tm.user_id = u.id
-       WHERE tm.project_id = $1 AND (tm.invited_by = $2 OR tm.user_id = $2)`,
-      [req.params.projectId, req.user.id]
+       WHERE tm.project_id = $1`,
+      [req.params.projectId]
     )
     res.json(rows)
   } catch (e) {
@@ -30,11 +32,7 @@ r.post('/invite', async (req, res) => {
   const memberRole = validRoles.includes(role) ? role : 'editor'
 
   try {
-    // Verify user owns the project
-    const { rows: proj } = await pool.query(
-      'SELECT * FROM projects WHERE id=$1 AND user_id=$2', [projectId, req.user.id]
-    )
-    if (!proj[0]) return res.status(403).json({ error: 'Ikke ditt prosjekt' })
+    const project = req.project || await requireProject(req, projectId)
 
     const inviteToken = crypto.randomBytes(20).toString('hex')
 
@@ -56,7 +54,7 @@ r.post('/invite', async (req, res) => {
         `INSERT INTO notifications (user_id, title, message, type, link)
          VALUES ($1, $2, $3, 'team', $4)`,
         [existingUser[0].id, 'Teaminnbydelse',
-         `${req.user.email} inviterte deg til prosjektet "${proj[0].name}"`,
+         `${req.user.email} inviterte deg til prosjektet "${project.name}"`,
          `/app?tab=settings`]
       )
     }
@@ -71,12 +69,15 @@ r.post('/invite', async (req, res) => {
 // DELETE /team/:id — remove member
 r.delete('/:id', async (req, res) => {
   try {
-    await pool.query(
-      `DELETE FROM team_members WHERE id=$1 AND invited_by=$2`,
-      [req.params.id, req.user.id]
+    const { rows: members } = await pool.query(
+      'SELECT project_id FROM team_members WHERE id=$1', [req.params.id]
     )
+    if (!members[0]) return res.status(404).json({ error: 'Teammedlem ikke funnet' })
+    await requireProject(req, members[0].project_id)
+    await pool.query('DELETE FROM team_members WHERE id=$1 AND project_id=$2', [req.params.id, members[0].project_id])
     res.json({ ok: true })
   } catch (e) {
+    if (sendProjectError(res, e)) return
     res.status(500).json({ error: e.message })
   }
 })
@@ -88,12 +89,18 @@ r.patch('/:id/role', async (req, res) => {
   if (!validRoles.includes(role)) return res.status(400).json({ error: 'Ugyldig rolle' })
 
   try {
+    const { rows: members } = await pool.query(
+      'SELECT project_id FROM team_members WHERE id=$1', [req.params.id]
+    )
+    if (!members[0]) return res.status(404).json({ error: 'Teammedlem ikke funnet' })
+    await requireProject(req, members[0].project_id)
     const { rows } = await pool.query(
-      `UPDATE team_members SET role=$1 WHERE id=$2 AND invited_by=$3 RETURNING *`,
-      [role, req.params.id, req.user.id]
+      `UPDATE team_members SET role=$1 WHERE id=$2 AND project_id=$3 RETURNING *`,
+      [role, req.params.id, members[0].project_id]
     )
     res.json(rows[0])
   } catch (e) {
+    if (sendProjectError(res, e)) return
     res.status(500).json({ error: e.message })
   }
 })

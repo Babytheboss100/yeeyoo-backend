@@ -28,6 +28,13 @@ export const corsOptions = {
   credentials: true
 }
 
+export function requireTrustedOrigin(req, res, next) {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next()
+  const origin = req.get('origin')
+  if (!origin || !ALLOWED_ORIGINS.includes(origin)) return res.status(403).json({ error: 'Ugyldig request origin' })
+  next()
+}
+
 // ─── General rate limiter: 100 req / 15 min per IP ──────────────────────────
 export const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

@@ -18,7 +18,7 @@ export async function requireProject(req, projectId, db = pool) {
     error.code = 'UNAUTHENTICATED'
     throw error
   }
-  if (!projectId || typeof projectId !== 'string') {
+  if (!projectId || typeof projectId !== 'string' || !projectId.trim()) {
     const error = new ProjectAccessError('projectId kreves')
     error.status = 400
     error.code = 'PROJECT_REQUIRED'
@@ -26,7 +26,7 @@ export async function requireProject(req, projectId, db = pool) {
   }
   const { rows } = await db.query(
     'SELECT * FROM projects WHERE id=$1 AND user_id=$2 LIMIT 1',
-    [projectId, req.user.id]
+    [projectId.trim(), req.user.id]
   )
   if (!rows[0]) throw new ProjectAccessError()
   return rows[0]
@@ -39,7 +39,11 @@ export function sendProjectError(res, error) {
 }
 
 export async function enforceProjectOwnership(req, res, next) {
-  const projectId = req.body?.projectId || req.body?.project_id || req.query?.projectId
+  const projectId = req.params?.projectId
+    || req.body?.projectId
+    || req.body?.project_id
+    || req.query?.projectId
+    || req.query?.project_id
   if (!projectId) return next()
   try {
     req.project = await requireProject(req, projectId)

@@ -1,11 +1,17 @@
 import { Router } from 'express'
 import bcrypt from 'bcryptjs'
-import jwt from 'jsonwebtoken'
 import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
 import { sendEmail, sendVerificationEmail } from '../services/email.js'
 import { validateRegister, validateLogin } from '../middleware/sanitize.js'
+import { requireAdmin } from '../middleware/admin.js'
+import { requireTrustedOrigin } from '../middleware/security.js'
+import {
+  ACCESS_COOKIE, REFRESH_COOKIE, clearSessionCookies, consumeExchangeCode,
+  createExchangeCode, createSession, parseCookies, revokeSession, rotateSession,
+  setSessionCookies,
+} from '../lib/session.js'
 
 const r = Router()
 
@@ -15,12 +21,6 @@ function escapeHtml(str) {
   if (!str) return ''
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
-
-const signToken = (user) =>
-  jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '7d' })
-
-const signRefreshToken = (user) =>
-  jwt.sign({ id: user.id, type: 'refresh' }, process.env.JWT_SECRET, { expiresIn: '30d' })
 
 // Log login to database
 async function logLogin(user, req, method = 'email') {
@@ -190,7 +190,9 @@ r.post('/login', validateLogin, async (req, res) => {
       })
     }
     logLogin(rows[0], req, 'email')
-    res.json({ token: signToken(rows[0]), refreshToken: signRefreshToken(rows[0]), user: { id: rows[0].id, name: rows[0].name, email: rows[0].email } })
+    const session = await createSession(rows[0].id, req)
+    setSessionCookies(res, session)
+    res.json({ user: { id: rows[0].id, name: rows[0].name, email: rows[0].email } })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
@@ -243,21 +245,45 @@ r.patch('/me', auth, async (req, res) => {
 
 // ─── REFRESH TOKEN ────────────────────────────────────────────────────────────
 
-r.post('/refresh', async (req, res) => {
-  const { refreshToken } = req.body
-  if (!refreshToken) return res.status(400).json({ error: 'Refresh token mangler' })
+r.post('/refresh', requireTrustedOrigin, async (req, res) => {
+  const refreshToken = parseCookies(req.headers.cookie)[REFRESH_COOKIE]
+  if (!refreshToken) return res.status(401).json({ error: 'Refresh session missing' })
   try {
-    const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET)
-    if (decoded.type !== 'refresh') return res.status(401).json({ error: 'Ugyldig token-type' })
-    const { rows } = await pool.query('SELECT id, email FROM users WHERE id=$1', [decoded.id])
-    if (!rows[0]) return res.status(401).json({ error: 'Bruker ikke funnet' })
-    res.json({ token: signToken(rows[0]), refreshToken: signRefreshToken(rows[0]) })
+    const session = await rotateSession(refreshToken, req)
+    if (!session) {
+      clearSessionCookies(res)
+      return res.status(401).json({ error: 'Invalid or expired refresh session' })
+    }
+    setSessionCookies(res, session)
+    res.status(204).end()
   } catch {
     res.status(401).json({ error: 'Ugyldig eller utløpt refresh token' })
   }
 })
 
 // ─── EMAIL VERIFICATION ───────────────────────────────────────────────────────
+
+r.post('/exchange', requireTrustedOrigin, async (req, res) => {
+  try {
+    const result = await consumeExchangeCode(req.body?.code, req)
+    if (!result) return res.status(401).json({ error: 'Invalid, used, or expired login code' })
+    setSessionCookies(res, result.session)
+    res.json({ user: result.user })
+  } catch (e) {
+    console.error('[auth/exchange]', e.message)
+    res.status(500).json({ error: 'Could not create session' })
+  }
+})
+
+r.post('/logout', requireTrustedOrigin, async (req, res) => {
+  const cookies = parseCookies(req.headers.cookie)
+  try {
+    await revokeSession({ accessToken: cookies[ACCESS_COOKIE], refreshToken: cookies[REFRESH_COOKIE] })
+  } finally {
+    clearSessionCookies(res)
+  }
+  res.status(204).end()
+})
 
 // GET /auth/verify?token=xxx — verify email from link in mail
 r.get('/verify', async (req, res) => {
@@ -277,7 +303,7 @@ r.get('/verify', async (req, res) => {
     // Auto-login: generate JWT and redirect (sender både ?token og ?oauth_token
     // for backward compat med gammel Vite-frontend)
     logLogin(rows[0], req, 'email-verify')
-    res.redirect(buildAuthRedirect(frontend, signToken(rows[0]), rows[0].name, { verified: 'true' }))
+    res.redirect(await buildAuthRedirect(frontend, rows[0], { verified: 'true' }))
   } catch (e) {
     console.error('Verify error:', e)
     res.redirect(`${frontend}?error=verify_failed`)
@@ -332,19 +358,19 @@ const ALLOWED_RETURN_HOSTS = [
 const ALLOWED_LOCALHOST_PORTS = new Set(['3000', '5173'])
 
 function resolveReturnTo(requested) {
-  const fallback = process.env.FRONTEND_URL || 'https://app.yeeyoo.no'
+  const fallbackOrigin = process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production' ? null : 'http://localhost:3000')
+  if (!fallbackOrigin) throw new Error('FRONTEND_URL mangler')
+  const fallback = new URL('/auth/callback', fallbackOrigin).toString()
   if (!requested) return fallback
   try {
     const u = new URL(requested)
     const isLocalhost = u.hostname === 'localhost' || u.hostname === '127.0.0.1'
     if (isLocalhost) {
-      return ALLOWED_LOCALHOST_PORTS.has(u.port) ? requested : fallback
+      return ALLOWED_LOCALHOST_PORTS.has(u.port) && u.pathname === '/auth/callback' ? u.toString() : fallback
     }
     if (u.protocol !== 'https:') return fallback
-    const hostOk = ALLOWED_RETURN_HOSTS.some(
-      (h) => u.hostname === h || u.hostname.endsWith('.' + h)
-    )
-    return hostOk ? requested : fallback
+    const hostOk = ALLOWED_RETURN_HOSTS.includes(u.hostname)
+    return hostOk && u.pathname === '/auth/callback' ? u.toString() : fallback
   } catch {
     return fallback
   }
@@ -353,11 +379,10 @@ function resolveReturnTo(requested) {
 // Bygg redirect-URL med both ?token og ?oauth_token. Den nye yeeyoo-next-appen
 // leser ?token. Den gamle Vite-monolitten på app.yeeyoo.no leser ?oauth_token.
 // Sender begge så vi ikke breaker den live mens migreringen pågår.
-function buildAuthRedirect(target, token, name, extraParams = {}) {
+async function buildAuthRedirect(target, user, extraParams = {}) {
+  const code = await createExchangeCode(user.id)
   const params = new URLSearchParams({
-    token,
-    oauth_token: token,
-    ...(name ? { name, oauth_name: name } : {}),
+    code,
     ...extraParams,
   })
   const sep = target.includes('?') ? '&' : '?'
@@ -424,7 +449,7 @@ r.get('/vipps/callback', async (req, res) => {
     })
 
     logLogin(user, req, 'vipps')
-    res.redirect(buildAuthRedirect(frontend, signToken(user), user.name))
+    res.redirect(await buildAuthRedirect(frontend, user))
   } catch (e) {
     console.error('Vipps error:', e)
     res.redirect(`${frontend}?error=${e.message==='invite_only'?'invite_only':'vipps_server'}`)
@@ -492,10 +517,10 @@ r.get('/google/callback', async (req, res) => {
     })
 
     logLogin(user, req, 'google')
-    res.redirect(buildAuthRedirect(frontend, signToken(user), user.name))
+    res.redirect(await buildAuthRedirect(frontend, user))
   } catch (e) {
     console.error('Google OAuth error:', e.stack || e.message)
-    res.redirect(`${frontend}?error=${e.message==='invite_only'?'invite_only':'google_server'}&detail=${encodeURIComponent(e.message)}`)
+    res.redirect(`${frontend}?error=${e.message==='invite_only'?'invite_only':'google_server'}`)
   }
 })
 
@@ -554,7 +579,7 @@ r.post('/request-access', async (req, res) => {
 })
 
 // ─── ADMIN: Whitelist management ─────────────────────────────────────────────
-r.get('/whitelist', auth, async (req, res) => {
+r.get('/whitelist', auth, requireAdmin, async (req, res) => {
   try {
     const { rows } = await pool.query(
       'SELECT * FROM invite_whitelist ORDER BY created_at DESC'
@@ -565,7 +590,7 @@ r.get('/whitelist', auth, async (req, res) => {
   }
 })
 
-r.post('/whitelist', auth, async (req, res) => {
+r.post('/whitelist', auth, requireAdmin, async (req, res) => {
   const { email, approved = true } = req.body
   if (!email) return res.status(400).json({ error: 'E-post mangler' })
   try {
@@ -582,7 +607,7 @@ r.post('/whitelist', auth, async (req, res) => {
   }
 })
 
-r.delete('/whitelist/:id', auth, async (req, res) => {
+r.delete('/whitelist/:id', auth, requireAdmin, async (req, res) => {
   try {
     await pool.query('DELETE FROM invite_whitelist WHERE id=$1', [req.params.id])
     res.json({ ok: true })

@@ -4,10 +4,11 @@ import { auth } from '../middleware/auth.js';
 const r = Router();
 r.use(auth);
 
-const TRACKER_URL = process.env.TRACKER_URL || 'https://help-tracker.onrender.com';
+const TRACKER_URL = process.env.TRACKER_URL || null;
 const TRACKER_KEY = process.env.TRACKER_API_KEY;
 
 async function tracker(path, method = 'GET', body = null) {
+  if (!TRACKER_URL || !TRACKER_KEY) throw new Error('Tracker integration is not configured');
   const opts = {
     method,
     headers: { 'x-api-key': TRACKER_KEY, 'Content-Type': 'application/json' },
