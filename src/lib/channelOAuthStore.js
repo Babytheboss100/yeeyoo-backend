@@ -45,3 +45,10 @@ export async function revokeChannelConnection({ id, userId, projectId, db = pool
   )
   return rows[0] || null
 }
+
+export async function listChannelConnections({ userId, projectId, db = pool }) {
+  const { rows } = await db.query(`SELECT id,user_id,project_id,provider,provider_account_id,status,scopes,capabilities,
+    last_verified_at,last_error_code,last_error_at,created_at,updated_at FROM channel_connections
+    WHERE user_id=$1 AND project_id=$2 ORDER BY provider,created_at`, [userId, projectId])
+  return rows
+}

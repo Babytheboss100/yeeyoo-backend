@@ -7,7 +7,8 @@ import { createPerformanceEvent, summarizePerformance } from '../src/marketing/p
 
 test('campaign lifecycle is explicit and rejects invalid state jumps', () => {
   const campaign = createCampaign({ userId: 'u1', projectId: 'p1', name: 'Launch' }, { id: 'c1', now: '2026-01-01T00:00:00Z' })
-  assert.equal(transitionCampaign(campaign, 'active').status, 'active')
+  const planned = transitionCampaign(campaign, 'planned')
+  assert.equal(transitionCampaign(planned, 'active').status, 'active')
   assert.throws(() => transitionCampaign(campaign, 'completed'), /Invalid campaign transition/)
 })
 

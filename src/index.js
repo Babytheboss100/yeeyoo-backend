@@ -47,6 +47,9 @@ import marketingArtifactRoutes from './routes/marketing-artifacts.js'
 import competitorRoutes from './routes/competitors.js'
 import marketingSpecialistRoutes from './routes/marketing-specialists.js'
 import channelOAuthRoutes from './routes/channel-oauth.js'
+import approvalRoutes from './routes/approvals.js'
+import activityRoutes from './routes/activity.js'
+import reportingRoutes from './routes/reporting.js'
 import { auth } from './middleware/auth.js'
 import { corsOptions, generalLimiter, generateLimiter, aiLimiter, suspiciousActivityLogger } from './middleware/security.js'
 import { trimStrings } from './middleware/sanitize.js'
@@ -117,6 +120,9 @@ app.use('/api/marketing-artifacts', marketingArtifactRoutes)
 app.use('/api/competitors', competitorRoutes)
 app.use('/api/marketing-specialists', marketingSpecialistRoutes)
 app.use('/api/channel-oauth', channelOAuthRoutes)
+app.use('/api/approvals', approvalRoutes)
+app.use('/api/activity', activityRoutes)
+app.use('/api/reporting', reportingRoutes)
 app.use('/api/content', contentRoutes)
 app.use('/api/billing', billingRoutes)
 app.use('/api/team', teamRoutes)

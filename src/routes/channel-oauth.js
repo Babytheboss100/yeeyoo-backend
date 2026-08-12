@@ -9,6 +9,11 @@ const service = createChannelOAuthService()
 r.use(auth)
 r.use(enforceProjectOwnership)
 
+r.get('/', async (req, res) => {
+  try { res.json(await service.list({ userId:req.user.id, projectId:req.query.projectId })) }
+  catch (error) { res.status(400).json({ error:error.message }) }
+})
+
 r.post('/:provider/start', async (req, res) => {
   const { provider } = req.params
   const { projectId, redirectUri } = req.body || {}
@@ -24,6 +29,13 @@ r.post('/:provider/callback', async (req, res) => {
   if (!CHANNEL_PROVIDERS.includes(provider)) return res.status(400).json({ error: 'Ukjent provider' })
   try { res.json(await service.callback({ projectId, provider, state, code })) }
   catch (error) { res.status(error.code === 'INVALID_OAUTH_STATE' ? 409 : 400).json({ error: error.message, code: error.code }) }
+})
+
+r.post('/:provider/:id/revoke', async (req, res) => {
+  const { provider, id } = req.params
+  if (!CHANNEL_PROVIDERS.includes(provider)) return res.status(400).json({ error:'Ukjent provider' })
+  try { res.json(await service.revoke({ id,userId:req.user.id,projectId:req.body?.projectId })) }
+  catch (error) { res.status(error.code === 'NOT_FOUND' ? 404 : 400).json({ error:error.message,code:error.code }) }
 })
 
 export default r

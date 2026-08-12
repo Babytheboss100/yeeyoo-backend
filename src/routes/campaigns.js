@@ -1,107 +1,15 @@
-import { Router } from 'express';
-import { auth } from '../middleware/auth.js';
+import { Router } from 'express'
+import { pool } from '../db.js'
+import { auth } from '../middleware/auth.js'
+import { requireProject, sendProjectError } from '../middleware/project.js'
+import { createCampaign, transitionCampaign } from '../marketing/campaignDomain.js'
 
-const r = Router();
-r.use(auth);
+const r = Router(); r.use(auth)
+const fail = (res, error) => { if (!sendProjectError(res, error)) res.status(error.code === 'INVALID_TRANSITION' ? 409 : 400).json({ error: error.message, code: error.code || 'INVALID_REQUEST' }) }
+const decode = row => row && ({ id:row.id,userId:row.user_id,projectId:row.project_id,schemaVersion:row.schema_version,name:row.name,objective:row.objective,status:row.status,context:row.context,createdAt:row.created_at,updatedAt:row.updated_at })
 
-const TRACKER_URL = process.env.TRACKER_URL || null;
-const TRACKER_KEY = process.env.TRACKER_API_KEY;
-
-async function tracker(path, method = 'GET', body = null) {
-  if (!TRACKER_URL || !TRACKER_KEY) throw new Error('Tracker integration is not configured');
-  const opts = {
-    method,
-    headers: { 'x-api-key': TRACKER_KEY, 'Content-Type': 'application/json' },
-  };
-  if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(`${TRACKER_URL}${path}`, opts);
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Tracker ${method} ${path} failed: ${res.status} ${text}`);
-  }
-  return res.json();
-}
-
-// POST /api/campaigns — create campaign via help-tracker
-r.post('/', async (req, res) => {
-  if (!TRACKER_KEY) return res.status(503).json({ error: 'TRACKER_API_KEY ikke konfigurert' });
-
-  const { name, subject, html_body, recipients, scheduled_at } = req.body;
-  if (!name || !subject || !html_body) {
-    return res.status(400).json({ error: 'name, subject og html_body er påkrevd' });
-  }
-
-  try {
-    // Parse recipients: comma-separated string or array
-    let recipientList = recipients;
-    if (typeof recipients === 'string') {
-      recipientList = recipients.split(',').map(e => e.trim()).filter(Boolean);
-    }
-
-    const campaign = await tracker('/campaigns', 'POST', {
-      name,
-      subject,
-      html_body,
-      recipients: recipientList || [],
-      scheduled_at: scheduled_at || null,
-    });
-
-    res.json(campaign);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// GET /api/campaigns — list all campaigns with stats
-r.get('/', async (req, res) => {
-  if (!TRACKER_KEY) return res.status(503).json({ error: 'TRACKER_API_KEY ikke konfigurert' });
-
-  try {
-    const campaigns = await tracker('/campaigns');
-
-    // Enrich with stats
-    const enriched = await Promise.all(
-      campaigns.map(async (c) => {
-        try {
-          const stats = await tracker(`/stats/campaign/${c.id}`);
-          return { ...c, stats };
-        } catch {
-          return { ...c, stats: null };
-        }
-      })
-    );
-
-    res.json(enriched);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// GET /api/campaigns/:id — single campaign with full stats
-r.get('/:id', async (req, res) => {
-  if (!TRACKER_KEY) return res.status(503).json({ error: 'TRACKER_API_KEY ikke konfigurert' });
-
-  try {
-    const [campaign, stats] = await Promise.all([
-      tracker(`/campaigns/${req.params.id}`),
-      tracker(`/stats/campaign/${req.params.id}`),
-    ]);
-    res.json({ ...campaign, stats });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// POST /api/campaigns/:id/send — trigger sending
-r.post('/:id/send', async (req, res) => {
-  if (!TRACKER_KEY) return res.status(503).json({ error: 'TRACKER_API_KEY ikke konfigurert' });
-
-  try {
-    const result = await tracker(`/campaigns/${req.params.id}/send`, 'POST');
-    res.json(result);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-export default r;
+r.get('/:projectId', async (req,res) => { try { await requireProject(req,req.params.projectId); const {rows}=await pool.query('SELECT * FROM marketing_campaigns WHERE user_id=$1 AND project_id=$2 ORDER BY updated_at DESC',[req.user.id,req.params.projectId]); res.json({campaigns:rows.map(decode)}) } catch(e){fail(res,e)} })
+r.post('/:projectId', async (req,res) => { try { await requireProject(req,req.params.projectId); const campaign=createCampaign({...req.body,userId:req.user.id,projectId:req.params.projectId}); const {rows}=await pool.query(`INSERT INTO marketing_campaigns (id,schema_version,user_id,project_id,name,objective,status,context) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,[campaign.id,campaign.schemaVersion,campaign.userId,campaign.projectId,campaign.name,campaign.objective,campaign.status,JSON.stringify(campaign.context)]); res.status(201).json(decode(rows[0])) } catch(e){fail(res,e)} })
+r.get('/:projectId/:id', async (req,res) => { try { await requireProject(req,req.params.projectId); const scoped=[req.params.id,req.user.id,req.params.projectId]; const [campaign,artifacts,planner,queue,performance,approvals]=await Promise.all([pool.query('SELECT * FROM marketing_campaigns WHERE id=$1 AND user_id=$2 AND project_id=$3',scoped),pool.query('SELECT * FROM marketing_artifacts WHERE campaign_id=$1 AND user_id=$2 AND project_id=$3 ORDER BY updated_at DESC',scoped),pool.query("SELECT * FROM posts WHERE campaign_id=$1 AND user_id=$2 AND project_id=$3 AND status IN ('draft','scheduled') ORDER BY scheduled_at",scoped),pool.query("SELECT * FROM posts WHERE campaign_id=$1 AND user_id=$2 AND project_id=$3 AND status NOT IN ('draft','scheduled') ORDER BY updated_at DESC",scoped),pool.query('SELECT * FROM marketing_performance_events WHERE campaign_id=$1 AND user_id=$2 AND project_id=$3 ORDER BY occurred_at DESC',scoped),pool.query('SELECT * FROM marketing_approval_decisions WHERE campaign_id=$1 AND user_id=$2 AND project_id=$3 ORDER BY decided_at DESC',scoped)]); if(!campaign.rows[0]) return res.status(404).json({error:'Campaign not found'}); res.json({campaign:decode(campaign.rows[0]),artifacts:artifacts.rows,plannerEntries:planner.rows,queueEntries:queue.rows,performanceEvents:performance.rows,approvals:approvals.rows,launchPlan:artifacts.rows.find(a=>a.type==='launch')||null}) } catch(e){fail(res,e)} })
+r.patch('/:projectId/:id/status', async(req,res)=>{try{await requireProject(req,req.params.projectId);const {rows}=await pool.query('SELECT * FROM marketing_campaigns WHERE id=$1 AND user_id=$2 AND project_id=$3',[req.params.id,req.user.id,req.params.projectId]);if(!rows[0])return res.status(404).json({error:'Campaign not found'});const next=transitionCampaign(decode(rows[0]),req.body.status);const updated=await pool.query('UPDATE marketing_campaigns SET status=$1,updated_at=$2 WHERE id=$3 AND user_id=$4 AND project_id=$5 RETURNING *',[next.status,next.updatedAt,req.params.id,req.user.id,req.params.projectId]);res.json(decode(updated.rows[0]))}catch(e){fail(res,e)}})
+export default r

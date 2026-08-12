@@ -1,5 +1,5 @@
 import { CHANNEL_PROVIDERS, createMockChannelProviderAdapter } from './channelProviderAdapters.js'
-import { createChannelOAuthState, consumeChannelOAuthState, upsertMockChannelConnection } from './channelOAuthStore.js'
+import { createChannelOAuthState, consumeChannelOAuthState, listChannelConnections, revokeChannelConnection, upsertMockChannelConnection } from './channelOAuthStore.js'
 import { toChannelConnection } from './channelConnections.js'
 
 export function createChannelOAuthService({ db, adapters = Object.fromEntries(CHANNEL_PROVIDERS.map((p) => [p, createMockChannelProviderAdapter(p)])) } = {}) {
@@ -16,6 +16,15 @@ export function createChannelOAuthService({ db, adapters = Object.fromEntries(CH
       if (!consumed) { const error = new Error('OAuth state is invalid, expired, or already used'); error.code = 'INVALID_OAUTH_STATE'; throw error }
       const row = await upsertMockChannelConnection({ userId: consumed.user_id, projectId, provider, externalAccountId: `mock:${provider}:${projectId}`, scopes: [], db })
       return { connection: toChannelConnection({ ...row, active: row.status !== 'revoked' }, provider), mock: true }
+    },
+    async list({ userId, projectId }) {
+      const rows = await listChannelConnections({ userId, projectId, db })
+      return { connections: rows.map(row => toChannelConnection({ ...row, active: row.status !== 'revoked' }, row.provider)) }
+    },
+    async revoke({ id, userId, projectId }) {
+      const row = await revokeChannelConnection({ id, userId, projectId, db })
+      if (!row) { const error = new Error('Connection not found'); error.code = 'NOT_FOUND'; throw error }
+      return { connection: toChannelConnection({ ...row, active: false }, row.provider), mock: true }
     },
   })
 }
