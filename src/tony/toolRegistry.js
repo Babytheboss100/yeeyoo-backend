@@ -1,5 +1,5 @@
-export const TONY_PERMISSION = Object.freeze({ READ: 'READ', CREATE_DRAFT: 'CREATE_DRAFT', APPROVE: 'APPROVE', PUBLISH: 'PUBLISH' })
-const RANK = Object.freeze({ READ: 0, CREATE_DRAFT: 1, APPROVE: 2, PUBLISH: 3 })
+export const TONY_PERMISSION = Object.freeze({ READ: 'READ', CREATE_DRAFT: 'CREATE_DRAFT' })
+const RANK = Object.freeze({ READ: 0, CREATE_DRAFT: 1 })
 
 export class TonyToolError extends Error {
   constructor(code, message) { super(message); this.name = 'TonyToolError'; this.code = code }
@@ -21,9 +21,6 @@ export function createTonyToolRegistry(definitions = []) {
       // trust a requested permission from model/tool input or the browser.
       const granted = Array.isArray(context.permissions) ? context.permissions : [TONY_PERMISSION.READ]
       if (!granted.some((permission) => permission in RANK && RANK[permission] >= RANK[tool.permission])) throw new TonyToolError('PERMISSION_DENIED', `Capability requires ${tool.permission}`)
-      if ([TONY_PERMISSION.APPROVE, TONY_PERMISSION.PUBLISH].includes(tool.permission)) {
-        if (authorization.confirmed !== true || authorization.confirmationId !== input.confirmationId) throw new TonyToolError('EXPLICIT_CONFIRMATION_REQUIRED', 'Explicit matching confirmation is required')
-      }
       return tool.execute(Object.freeze({ userId: context.userId, projectId: context.projectId }), input)
     },
   })
@@ -38,7 +35,10 @@ export function createDefaultTonyRegistry(handlers = {}) {
     definition('radar.read', TONY_PERMISSION.READ, 'Read Radar signals'),
     definition('copy.create_draft', TONY_PERMISSION.CREATE_DRAFT, 'Create copy without publishing'),
     definition('planner.create_draft', TONY_PERMISSION.CREATE_DRAFT, 'Create a draft plan'),
-    definition('queue.approve', TONY_PERMISSION.APPROVE, 'Approve a queued artifact'),
-    definition('queue.publish', TONY_PERMISSION.PUBLISH, 'Publish an approved artifact'),
+    definition('seo.create_draft', TONY_PERMISSION.CREATE_DRAFT, 'Create an SEO draft'),
+    definition('funnel.create_draft', TONY_PERMISSION.CREATE_DRAFT, 'Create a funnel draft'),
+    definition('launch.create_draft', TONY_PERMISSION.CREATE_DRAFT, 'Create a launch draft'),
+    definition('ads.create_draft', TONY_PERMISSION.CREATE_DRAFT, 'Create an ads draft without spending'),
+    definition('reporting.read', TONY_PERMISSION.READ, 'Read project reporting'),
   ])
 }

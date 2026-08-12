@@ -13,6 +13,8 @@ import { enforceProjectOwnership } from '../middleware/project.js'
 import { checkAILimit, logAIUsage } from '../middleware/aiLimit.js'
 import { falRun, extractImageUrl } from '../lib/fal.js'
 import { logAudit } from '../lib/audit.js'
+import { beginDurableJob, durableResult } from '../jobs/jobCutover.js'
+import { transitionJob } from '../jobs/jobStore.js'
 
 const r = Router()
 r.use(auth)
@@ -38,14 +40,19 @@ r.post('/generate', checkAILimit('translate_image'), async (req, res) => {
   const { image_url: imageUrl, source_lang: sourceLang, target_lang: targetLang, project_id: projectId, mask_url: maskUrl } = req.body || {}
   if (!imageUrl || !targetLang) return res.status(400).json({ error: 'image_url og target_lang kreves' })
 
-  const id = crypto.randomUUID()
-  await pool.query(
-    `INSERT INTO image_translations (id, user_id, project_id, source_image_url, source_lang, target_lang, status)
-     VALUES ($1,$2,$3,$4,$5,$6,'pending')`,
-    [id, req.user.id, projectId || null, imageUrl, sourceLang || null, targetLang]
-  )
-
+  if (!projectId) return res.status(400).json({ error: 'projectId kreves' })
+  let durable
+  let id
   try {
+    durable = await beginDurableJob({ userId: req.user.id, projectId, kind: 'translate_image', provider: 'anthropic+fal', model: INPAINT_MODEL, input: { imageUrl, sourceLang, targetLang, hasMask: !!maskUrl }, idempotencyKey: req.get('Idempotency-Key') || crypto.randomUUID() })
+    const running = await transitionJob({ id: durable.id, userId: req.user.id, projectId, from: 'queued', to: 'running' })
+    if (!running) return res.status(409).json({ error: 'Jobben er allerede startet' })
+    id = durable.id
+    await pool.query(
+      `INSERT INTO image_translations (id, user_id, project_id, source_image_url, source_lang, target_lang, status)
+       VALUES ($1,$2,$3,$4,$5,$6,'pending')`,
+      [id, req.user.id, projectId, imageUrl, sourceLang || null, targetLang]
+    )
     // 1) OCR via Claude vision
     const ocr = await anthropic({
       model: 'claude-sonnet-4-20250514',
@@ -90,6 +97,7 @@ r.post('/generate', checkAILimit('translate_image'), async (req, res) => {
     )
     await logAIUsage({ userId: req.user.id, endpoint: 'translate_image', tokensIn: (ocr.usage?.input_tokens || 0) + (tr.usage?.input_tokens || 0), tokensOut: (ocr.usage?.output_tokens || 0) + (tr.usage?.output_tokens || 0) })
     await logAudit({ userId: req.user.id, action: 'translate_image.generate', resourceType: 'image_translation', resourceId: id, metadata: { targetLang, inpainted: !!translatedImageUrl } })
+    await transitionJob({ id, userId: req.user.id, projectId, from: 'running', to: 'succeeded', ...durableResult('translate_image', { detectedText, translatedText, translatedImageUrl }, { tokensIn: (ocr.usage?.input_tokens || 0) + (tr.usage?.input_tokens || 0), tokensOut: (ocr.usage?.output_tokens || 0) + (tr.usage?.output_tokens || 0) }) })
 
     res.json({
       id,
@@ -100,6 +108,7 @@ r.post('/generate', checkAILimit('translate_image'), async (req, res) => {
       note: translatedImageUrl ? undefined : 'Ingen mask_url oppgitt — returnerte OCR + oversettelse uten nytt bilde. Send mask_url for in-place inpainting.',
     })
   } catch (e) {
+    if (durable) await transitionJob({ id: durable.id, userId: req.user.id, projectId, from: 'running', to: 'failed', error: e }).catch(() => {})
     await pool.query("UPDATE image_translations SET status='failed', error=$1 WHERE id=$2", [e.message, id]).catch(() => {})
     console.error('[translate-image/generate]', e.message)
     res.status(502).json({ error: e.message, id })

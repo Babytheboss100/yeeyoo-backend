@@ -13,6 +13,8 @@ import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
 import { enforceProjectOwnership } from '../middleware/project.js'
 import { checkAILimit, logAIUsage } from '../middleware/aiLimit.js'
+import { beginDurableJob, durableResult } from '../jobs/jobCutover.js'
+import { transitionJob } from '../jobs/jobStore.js'
 
 const r = Router()
 r.use(auth)
@@ -161,6 +163,7 @@ r.post('/chat', checkAILimit('tony_chat'), async (req, res) => {
   if (!Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: 'messages må være ikke-tom liste' })
   }
+  if (!projectId) return res.status(400).json({ error: 'projectId kreves' })
   const provider = PROVIDERS[model]
   if (!provider) return res.status(400).json({ error: `Ukjent modell: ${model}` })
 
@@ -178,7 +181,11 @@ r.post('/chat', checkAILimit('tony_chat'), async (req, res) => {
     return res.status(400).json({ error: 'Siste melding må være fra bruker' })
   }
 
+  let durable
   try {
+    durable = await beginDurableJob({ userId: req.user.id, projectId, kind: 'tony', provider: model, model: provider.model, input: { messageCount: messages.length, conversationId: conversationId || null }, idempotencyKey: req.get('Idempotency-Key') || crypto.randomUUID() })
+    const running = await transitionJob({ id: durable.id, userId: req.user.id, projectId, from: 'queued', to: 'running' })
+    if (!running) return res.status(409).json({ error: 'Jobben er allerede startet' })
     // 1) Sørg for at vi har en conversation-rad
     let convoId = conversationId
     if (!convoId) {
@@ -192,8 +199,8 @@ r.post('/chat', checkAILimit('tony_chat'), async (req, res) => {
     } else {
       // Verify ownership
       const { rows } = await pool.query(
-        'SELECT id FROM tony_conversations WHERE id=$1 AND user_id=$2',
-        [convoId, req.user.id]
+        'SELECT id FROM tony_conversations WHERE id=$1 AND user_id=$2 AND project_id=$3',
+        [convoId, req.user.id, projectId]
       )
       if (!rows[0]) return res.status(404).json({ error: 'Samtale ikke funnet' })
     }
@@ -229,9 +236,11 @@ r.post('/chat', checkAILimit('tony_chat'), async (req, res) => {
 
     // 6) Logg AI-bruk (kostnadssporing + grensetelling)
     await logAIUsage({ userId: req.user.id, endpoint: 'tony_chat', tokensIn, tokensOut })
+    await transitionJob({ id: durable.id, userId: req.user.id, projectId, from: 'running', to: 'succeeded', ...durableResult('tony', { reply }, { tokensIn, tokensOut }) })
 
-    res.json({ reply, conversationId: convoId, message_id: asstMsgId })
+    res.json({ reply, conversationId: convoId, message_id: asstMsgId, jobId: durable.id })
   } catch (e) {
+    if (durable) await transitionJob({ id: durable.id, userId: req.user.id, projectId, from: 'running', to: 'failed', error: e }).catch(() => {})
     console.error('[tony/chat]', e.message)
     res.status(500).json({ error: 'AI-providere svarte ikke som forventet. Prøv igjen eller bytt modell.' })
   }
@@ -240,20 +249,15 @@ r.post('/chat', checkAILimit('tony_chat'), async (req, res) => {
 // GET /api/tony/conversations?projectId=
 r.get('/conversations', async (req, res) => {
   const { projectId } = req.query
+  if (!projectId) return res.status(400).json({ error: 'projectId kreves' })
   try {
-    const params = [req.user.id]
-    let where = 'user_id = $1'
-    if (projectId) {
-      params.push(projectId)
-      where += ` AND project_id = $${params.length}`
-    }
     const { rows } = await pool.query(
       `SELECT id, title, model, created_at, updated_at
        FROM tony_conversations
-       WHERE ${where}
+       WHERE user_id=$1 AND project_id=$2
        ORDER BY updated_at DESC
        LIMIT 100`,
-      params
+      [req.user.id, projectId]
     )
     res.json(rows)
   } catch (e) {
@@ -265,12 +269,14 @@ r.get('/conversations', async (req, res) => {
 // GET /api/tony/conversations/:id
 r.get('/conversations/:id', async (req, res) => {
   const { id } = req.params
+  const { projectId } = req.query
+  if (!projectId) return res.status(400).json({ error: 'projectId kreves' })
   try {
     const { rows: convo } = await pool.query(
       `SELECT id, title, model, created_at, updated_at
        FROM tony_conversations
-       WHERE id=$1 AND user_id=$2`,
-      [id, req.user.id]
+       WHERE id=$1 AND user_id=$2 AND project_id=$3`,
+      [id, req.user.id, projectId]
     )
     if (!convo[0]) return res.status(404).json({ error: 'Samtale ikke funnet' })
 

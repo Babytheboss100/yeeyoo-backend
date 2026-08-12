@@ -15,7 +15,7 @@ function registry(overrides = {}) {
 }
 
 test('Tony follows server-owned Profile -> Competitors -> Copy -> Plan draft flow with trace', async () => {
-  const result = await orchestrateTonyDraft({ registry: registry(), context: { userId: 'u1', projectId: 'p1', permissions: [TONY_PERMISSION.PUBLISH] }, intent: { goal: 'launch' }, now: () => '2026-08-12T00:00:00.000Z', traceId: 'trace1' })
+  const result = await orchestrateTonyDraft({ registry: registry(), context: { userId: 'u1', projectId: 'p1', permissions: [TONY_PERMISSION.CREATE_DRAFT] }, intent: { goal: 'launch' }, now: () => '2026-08-12T00:00:00.000Z', traceId: 'trace1' })
   assert.deepEqual(result.trace.tools.map(x => x.name), ['marketing_profile.read', 'competitors.read', 'copy.create_draft', 'planner.create_draft'])
   assert.deepEqual(result.trace.jobIds, ['j1', 'j2']); assert.equal(result.draftOnly, true); assert.equal(result.trace.permission, 'CREATE_DRAFT')
 })
@@ -30,3 +30,8 @@ test('crawled instructions remain bounded untrusted data', () => {
   assert.equal(evidence.trust, 'untrusted_external_data'); assert.equal(evidence.content.length, 40); assert.ok(!evidence.content.includes('\u0000'))
 })
 
+test('privileged side effects are rejected even when hidden in tool output', () => {
+  for (const output of [{ status: 'sent' }, { spend: 1 }, { providerPostId: 'post' }, { status: 'connected' }, { status: 'deleted' }]) {
+    assert.throws(() => assertSafeToolOutput({ projectId: 'p1', ...output }, 'p1'), { code: 'UNSAFE_TOOL_OUTPUT' })
+  }
+})

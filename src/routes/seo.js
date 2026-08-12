@@ -4,6 +4,8 @@ import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
 import { enforceProjectOwnership, requireProject, sendProjectError } from '../middleware/project.js'
 import { checkAILimit, logAIUsage } from '../middleware/aiLimit.js'
+import { beginDurableJob, durableResult } from '../jobs/jobCutover.js'
+import { transitionJob } from '../jobs/jobStore.js'
 
 const r = Router()
 r.use(auth)
@@ -112,7 +114,8 @@ Returner JSON med NØYAKTIG denne formen:
 
 // ─── action='strategy' ───────────────────────────────────────────────
 async function handleStrategy(req, res) {
-  const { url, keyword, keywords, competitors } = req.body
+  const { projectId, url, keyword, keywords, competitors } = req.body
+  if (!projectId) return res.status(400).json({ error: 'projectId kreves' })
   if (!Array.isArray(keywords) || keywords.length === 0) {
     return res.status(400).json({ error: 'keywords[] mangler' })
   }
@@ -140,7 +143,11 @@ Returner JSON med NØYAKTIG denne formen:
 
 10 keywords, 3-5 titler, 3 metas (UNDER 155 tegn hver), 5 content-ideer. Svar KUN JSON.`
 
+  let durable
   try {
+    durable = await beginDurableJob({ userId: req.user.id, projectId, kind: 'seo', provider: 'anthropic', model: 'claude-sonnet-4-20250514', input: { url, keyword, keywords, competitors }, idempotencyKey: req.get('Idempotency-Key') || crypto.randomUUID() })
+    const running = await transitionJob({ id: durable.id, userId: req.user.id, projectId, from: 'queued', to: 'running' })
+    if (!running) return res.status(409).json({ error: 'Jobben er allerede startet' })
     const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -159,8 +166,10 @@ Returner JSON med NØYAKTIG denne formen:
     const raw = data.content?.[0]?.text || ''
     const json = JSON.parse((raw.match(/\{[\s\S]*\}/) || ['{}'])[0])
     await logAIUsage({ userId: req.user.id, endpoint: 'seo', tokensIn: data.usage?.input_tokens, tokensOut: data.usage?.output_tokens })
-    res.json(json)
+    await transitionJob({ id: durable.id, userId: req.user.id, projectId, from: 'running', to: 'succeeded', ...durableResult('seo', { report: json }, { tokensIn: data.usage?.input_tokens, tokensOut: data.usage?.output_tokens }) })
+    res.json({ ...json, jobId: durable.id })
   } catch (e) {
+    if (durable) await transitionJob({ id: durable.id, userId: req.user.id, projectId, from: 'running', to: 'failed', error: e }).catch(() => {})
     console.error('[seo/generate strategy]', e.message)
     res.status(500).json({ error: e.message })
   }

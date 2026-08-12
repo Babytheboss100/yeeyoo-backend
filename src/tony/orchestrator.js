@@ -16,7 +16,8 @@ export function untrustedEvidence(value, maxLength = 12_000) {
 export function assertSafeToolOutput(output, projectId) {
   if (!output || typeof output !== 'object') throw new TonyToolError('INVALID_TOOL_OUTPUT', 'Tool output must be structured')
   if (output.projectId && output.projectId !== projectId) throw new TonyToolError('CROSS_PROJECT_OUTPUT', 'Tool returned another project context')
-  if (output.status && ['approved', 'published'].includes(output.status)) throw new TonyToolError('UNSAFE_TOOL_OUTPUT', 'Draft orchestration cannot approve or publish')
+  if (output.status && ['approved', 'published', 'sent', 'connected', 'deleted'].includes(output.status)) throw new TonyToolError('UNSAFE_TOOL_OUTPUT', 'Draft orchestration produced a privileged side effect')
+  if (output.spend || output.providerPostId || output.sentAt) throw new TonyToolError('UNSAFE_TOOL_OUTPUT', 'Draft orchestration produced a privileged side effect')
   return output
 }
 
@@ -44,4 +45,3 @@ export async function orchestrateTonyDraft({ registry, context, intent = {}, now
   trace.completedAt = now()
   return { profile, competitors, copy, plan, trace, draftOnly: true }
 }
-

@@ -10,6 +10,8 @@ import { enforceProjectOwnership } from '../middleware/project.js'
 import { checkAILimit, logAIUsage } from '../middleware/aiLimit.js'
 import { falSubmit, falPoll, extractImageUrl, aspectToImageSize } from '../lib/fal.js'
 import { logAudit } from '../lib/audit.js'
+import { beginDurableJob, durableResult } from '../jobs/jobCutover.js'
+import { transitionJob } from '../jobs/jobStore.js'
 
 const r = Router()
 r.use(auth)
@@ -22,7 +24,12 @@ const PHOTOSHOOT_COST = 0.05 // estimat per bilde (USD)
 r.post('/generate', checkAILimit('photoshoot'), async (req, res) => {
   const { prompt, project_id: projectId, scene_type: sceneType, aspect_ratio: aspectRatio } = req.body || {}
   if (!prompt) return res.status(400).json({ error: 'prompt kreves' })
+  let durable
   try {
+    if (!projectId) return res.status(400).json({ error: 'projectId kreves' })
+    durable = await beginDurableJob({ userId: req.user.id, projectId, kind: 'photoshoot', provider: 'fal', model: FLUX_PRO, input: { prompt, sceneType, aspectRatio }, idempotencyKey: req.get('Idempotency-Key') || crypto.randomUUID() })
+    const running = await transitionJob({ id: durable.id, userId: req.user.id, projectId, from: 'queued', to: 'running' })
+    if (!running) return res.status(409).json({ error: 'Jobben er allerede startet' })
     const fullPrompt = sceneType
       ? `${prompt}. ${sceneType} photography, professional lighting, high detail.`
       : prompt
@@ -32,7 +39,7 @@ r.post('/generate', checkAILimit('photoshoot'), async (req, res) => {
       num_images: 1,
     })
 
-    const id = crypto.randomUUID()
+    const id = durable.id
     await pool.query(
       `INSERT INTO photoshoot_generations (id, user_id, project_id, prompt, scene_type, aspect_ratio, status, fal_request_id, cost_usd)
        VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8)`,
@@ -42,6 +49,7 @@ r.post('/generate', checkAILimit('photoshoot'), async (req, res) => {
     await logAudit({ userId: req.user.id, action: 'photoshoot.generate', resourceType: 'photoshoot_generation', resourceId: id, metadata: { sceneType: sceneType || null, aspectRatio: aspectRatio || '1:1' } })
     res.status(202).json({ id, status: 'pending' })
   } catch (e) {
+    if (durable) await transitionJob({ id: durable.id, userId: req.user.id, projectId, from: 'running', to: 'failed', error: e }).catch(() => {})
     console.error('[photoshoot/generate]', e.message)
     res.status(502).json({ error: e.message })
   }
@@ -65,9 +73,11 @@ r.get('/:id', async (req, res) => {
           [url, job.id]
         )
         job.status = 'completed'; job.image_url = url
+        await transitionJob({ id: job.id, userId: req.user.id, projectId: job.project_id, from: 'running', to: 'succeeded', ...durableResult('photoshoot', { imageUrl: url }) })
       } else if (check.state === 'failed') {
         await pool.query("UPDATE photoshoot_generations SET status='failed', error=$1 WHERE id=$2", [check.error, job.id])
         job.status = 'failed'; job.error = check.error
+        await transitionJob({ id: job.id, userId: req.user.id, projectId: job.project_id, from: 'running', to: 'failed', error: new Error(check.error || 'Photoshoot provider failed') })
       }
     }
     res.json({ id: job.id, status: job.status, imageUrl: job.image_url || null, error: job.error || null })
