@@ -1,0 +1,8 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { safeCrawl, validateCrawlUrl } from '../src/services/safeCrawler.js'
+const publicDns = async () => [{ address: '93.184.216.34', family: 4 }]
+test('crawler rejects malformed and private targets', async () => { await assert.rejects(validateCrawlUrl('not a url'), { code: 'INVALID_URL' }); await assert.rejects(validateCrawlUrl('http://127.0.0.1/x'), { code: 'BLOCKED_TARGET' }); await assert.rejects(validateCrawlUrl('http://internal.example', { lookup: async () => [{ address: '10.0.0.1', family: 4 }] }), { code: 'BLOCKED_TARGET' }) })
+test('crawler revalidates redirect destinations', async () => { const fetchImpl = async () => new Response('', { status: 302, headers: { location: 'http://169.254.169.254/latest' } }); await assert.rejects(safeCrawl('https://example.com', { lookup: publicDns, fetchImpl }), { code: 'BLOCKED_TARGET' }) })
+test('crawler enforces content type and response size', async () => { await assert.rejects(safeCrawl('https://example.com', { lookup: publicDns, fetchImpl: async () => new Response('x', { headers: { 'content-type': 'image/png' } }) }), { code: 'UNSUPPORTED_CONTENT_TYPE' }); await assert.rejects(safeCrawl('https://example.com', { lookup: publicDns, maxBytes: 2, fetchImpl: async () => new Response('abc', { headers: { 'content-type': 'text/html' } }) }), { code: 'RESPONSE_TOO_LARGE' }) })
+test('crawler returns bounded supported content', async () => { const result = await safeCrawl('https://example.com/#secret', { lookup: publicDns, fetchImpl: async () => new Response('<h1>ok</h1>', { headers: { 'content-type': 'text/html; charset=utf-8' } }) }); assert.equal(result.body, '<h1>ok</h1>'); assert.equal(result.url, 'https://example.com/') })

@@ -12,6 +12,7 @@ import {
   createExchangeCode, createSession, parseCookies, revokeSession, rotateSession,
   setSessionCookies,
 } from '../lib/session.js'
+import { consumeLoginOauthState, createLoginOauthState } from '../lib/loginOauthState.js'
 
 const r = Router()
 
@@ -336,15 +337,6 @@ const VIPPS_BASE = process.env.VIPPS_BASE_URL || 'https://api.vipps.no'
 
 // state → { returnTo | null }. createState() lager state'en og lagrer den
 // klienten ba om å bli sendt tilbake til. Auto-rydding etter 10 min.
-const pendingStates = new Map()
-
-function createState(returnTo) {
-  const state = crypto.randomBytes(20).toString('hex')
-  pendingStates.set(state, { returnTo: returnTo || null })
-  setTimeout(() => pendingStates.delete(state), 600000)
-  return state
-}
-
 // Same-origin OAuth-callback. Klienten sender ?returnTo=<full-url> og vi
 // validerer mot whitelist FØR vi redirecter — uten dette er endpointet et
 // open-redirect og en phishing-vektor.
@@ -389,11 +381,13 @@ async function buildAuthRedirect(target, user, extraParams = {}) {
   return `${target}${sep}${params.toString()}`
 }
 
-r.get('/vipps', (req, res) => {
+r.get('/vipps', async (req, res) => {
   if (!process.env.VIPPS_CLIENT_ID) return res.status(503).json({ error: 'Vipps ikke konfigurert' })
   const redirectUri = process.env.VIPPS_REDIRECT_URI ||
     `${process.env.BACKEND_URL || 'http://localhost:3001'}/api/auth/vipps/callback`
-  const state = createState(req.query.returnTo)
+  let state
+  try { state = await createLoginOauthState('vipps', req.query.returnTo) }
+  catch { return res.status(503).json({ error: 'Innlogging er midlertidig utilgjengelig' }) }
   const params = new URLSearchParams({
     client_id: process.env.VIPPS_CLIENT_ID,
     response_type: 'code',
@@ -406,11 +400,10 @@ r.get('/vipps', (req, res) => {
 
 r.get('/vipps/callback', async (req, res) => {
   const { code, state, error: vErr } = req.query
-  const stored = state ? pendingStates.get(state) : null
-  const frontend = resolveReturnTo(stored?.returnTo)
+  const stored = await consumeLoginOauthState('vipps', state)
+  const frontend = resolveReturnTo(stored?.return_to)
+  if (!stored) return res.redirect(`${frontend}?error=invalid_state`)
   if (vErr) return res.redirect(`${frontend}?error=vipps_denied`)
-  if (!state || !pendingStates.has(state)) return res.redirect(`${frontend}?error=invalid_state`)
-  pendingStates.delete(state)
   if (!code) return res.redirect(`${frontend}?error=no_code`)
 
   try {
@@ -459,11 +452,13 @@ r.get('/vipps/callback', async (req, res) => {
 // ─── GOOGLE LOGIN ─────────────────────────────────────────────────────────────
 // Docs: https://developers.google.com/identity/protocols/oauth2/web-server
 
-r.get('/google', (req, res) => {
+r.get('/google', async (req, res) => {
   if (!process.env.GOOGLE_CLIENT_ID) return res.status(503).json({ error: 'Google ikke konfigurert' })
   const redirectUri = process.env.GOOGLE_REDIRECT_URI ||
     `${process.env.BACKEND_URL || 'http://localhost:3001'}/api/auth/google/callback`
-  const state = createState(req.query.returnTo)
+  let state
+  try { state = await createLoginOauthState('google', req.query.returnTo) }
+  catch { return res.status(503).json({ error: 'Innlogging er midlertidig utilgjengelig' }) }
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID,
     redirect_uri: redirectUri,
@@ -478,11 +473,10 @@ r.get('/google', (req, res) => {
 
 r.get('/google/callback', async (req, res) => {
   const { code, state, error: gErr } = req.query
-  const stored = state ? pendingStates.get(state) : null
-  const frontend = resolveReturnTo(stored?.returnTo)
+  const stored = await consumeLoginOauthState('google', state)
+  const frontend = resolveReturnTo(stored?.return_to)
+  if (!stored) return res.redirect(`${frontend}?error=invalid_state`)
   if (gErr) return res.redirect(`${frontend}?error=google_denied`)
-  if (!state || !pendingStates.has(state)) return res.redirect(`${frontend}?error=invalid_state`)
-  pendingStates.delete(state)
   if (!code) return res.redirect(`${frontend}?error=no_code`)
 
   try {

@@ -6,6 +6,7 @@ import { checkAILimit, logAIUsage } from '../middleware/aiLimit.js'
 import { enforceProjectOwnership } from '../middleware/project.js'
 import { profileFromLegacyBusiness } from '../marketing/profile.js'
 import { saveMarketingProfile } from '../marketing/profileStore.js'
+import { safeCrawl } from '../services/safeCrawler.js'
 
 const r = Router()
 r.use(auth)
@@ -15,16 +16,10 @@ const SYSTEM = 'Du er en norsk merkevare-strateg. Svar ALLTID med gyldig JSON ut
 const PROMPT = (url, scraped) => `Analyser bedriften fra ${url}. Tekst:\n${scraped.slice(0, 4000)}\nSvar med JSON: {"tone":"", "audience":{"age":"","demographics":"","interests":[]}, "values":[], "visualIdentity":{"colors":[],"fonts":[]}, "competitors":[], "summary":""}. Bruk null når grunnlaget mangler.`
 
 async function scrapeUrl(url) {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 10000)
-  try {
-    const response = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; YeeyooBrandBot/1.0)', Accept: 'text/html,application/xhtml+xml,*/*' } })
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    const html = await response.text()
+    const { body: html } = await safeCrawl(url, { allowedTypes: ['text/html', 'application/xhtml+xml'], maxBytes: 1_000_000 })
     const title = (html.match(/<title>([^<]*)<\/title>/i) || [, ''])[1].trim()
     const visible = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ').replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim()
     return `TITLE: ${title}\n\nBODY: ${visible.slice(0, 4000)}`
-  } finally { clearTimeout(timer) }
 }
 
 r.post('/analyze', checkAILimit('brand_dna'), async (req, res) => {
@@ -33,8 +28,7 @@ r.post('/analyze', checkAILimit('brand_dna'), async (req, res) => {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return res.status(503).json({ error: 'AI-provider ikke konfigurert' })
   try {
-    let scraped
-    try { scraped = await scrapeUrl(url) } catch { scraped = `(bare URL er kjent: ${url})` }
+    const scraped = await scrapeUrl(url)
     const aiResponse = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1500, system: SYSTEM, messages: [{ role: 'user', content: PROMPT(url, scraped) }] }) })
     if (!aiResponse.ok) throw new Error(`anthropic ${aiResponse.status}: ${(await aiResponse.text()).slice(0, 200)}`)
     const aiData = await aiResponse.json()

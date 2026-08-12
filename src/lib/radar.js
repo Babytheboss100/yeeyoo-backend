@@ -3,6 +3,7 @@
 
 import crypto from 'crypto'
 import { pool } from '../db.js'
+import { safeCrawl } from '../services/safeCrawler.js'
 
 function decode(s) {
   return String(s || '')
@@ -32,12 +33,8 @@ export function keywordFeedUrl(keyword, lang = 'no') {
   return `https://news.google.com/rss/search?q=${encodeURIComponent(keyword)}&hl=${hl}&gl=${gl}`
 }
 
-export async function fetchAndParseFeed(url) {
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'YeeyooRadar/1.0', Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*' },
-  })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const xml = await res.text()
+export async function fetchAndParseFeed(url, crawlOptions) {
+  const { body: xml } = await safeCrawl(url, { ...crawlOptions, allowedTypes: ['application/rss+xml', 'application/atom+xml', 'application/xml', 'text/xml'] })
   const head = xml.split(/<item|<entry/i)[0]
   const feedTitle = tag(head, 'title')
 

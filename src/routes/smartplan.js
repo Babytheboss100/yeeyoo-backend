@@ -7,6 +7,7 @@ import { enforceProjectOwnership } from '../middleware/project.js'
 import { normalizeRequestedPlatforms, buildPlannerCalendarQuery } from '../marketing/smartPlanner.js'
 import { getMarketingProfile } from '../marketing/profileStore.js'
 import { plannerContextFromProfile } from '../marketing/profile.js'
+import { safeCrawl } from '../services/safeCrawler.js'
 
 const r = Router()
 r.use(auth)
@@ -49,18 +50,7 @@ VIKTIG:
 - Svar KUN med JSON, ingen annen tekst`
 
 async function scrapeUrl(url) {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 10000)
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; YeeyooBrandBot/1.0)',
-        Accept: 'text/html,application/xhtml+xml,*/*',
-      },
-    })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const html = await res.text()
+  const { body: html } = await safeCrawl(url, { allowedTypes: ['text/html', 'application/xhtml+xml'], maxBytes: 1_000_000 })
     const title = (html.match(/<title>([^<]*)<\/title>/i) || [, ''])[1].trim()
     const desc = (html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i) || [, ''])[1]
     const visibleText = html
@@ -72,9 +62,6 @@ async function scrapeUrl(url) {
       .trim()
     return [`TITLE: ${title}`, desc && `DESCRIPTION: ${desc}`, `BODY: ${visibleText.slice(0, 4000)}`]
       .filter(Boolean).join('\n\n')
-  } finally {
-    clearTimeout(timer)
-  }
 }
 
 async function analyzeAndCreateBusiness({ userId, projectId, url }) {
@@ -168,12 +155,7 @@ r.post('/analyse', async (req, res) => {
   try {
     await ensureSmartplanTable()
     // Scrape via Jina Reader
-    const jinaUrl = `https://r.jina.ai/${url}`
-    const scrapeRes = await fetch(jinaUrl, {
-      headers: { 'Accept': 'text/plain' }
-    })
-    if (!scrapeRes.ok) throw new Error('Kunne ikke lese nettsiden')
-    const rawText = await scrapeRes.text()
+    const { body: rawText } = await safeCrawl(url, { allowedTypes: ['text/html', 'application/xhtml+xml'], maxBytes: 1_000_000 })
 
     // Truncate to avoid token limits
     const truncated = rawText.substring(0, 12000)

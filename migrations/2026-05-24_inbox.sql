@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS inbox_messages (
 
 CREATE INDEX IF NOT EXISTS idx_inbox_threads_user ON inbox_threads (user_id, last_message_at DESC);
 CREATE INDEX IF NOT EXISTS idx_inbox_msgs_thread  ON inbox_messages (thread_id, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_inbox_msgs_meta_message
+  ON inbox_messages (meta_message_id) WHERE meta_message_id IS NOT NULL;
 
 DO $$ BEGIN
   ALTER TABLE inbox_threads ADD CONSTRAINT inbox_user_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;

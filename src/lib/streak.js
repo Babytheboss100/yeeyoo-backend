@@ -19,20 +19,37 @@ export function nextStreak({ count = 0, lastPostAt, occurredAt = new Date(), tim
 
 export async function bumpStreak(userId, { eventKey = null, occurredAt = new Date(), timeZone = 'UTC', db = pool } = {}) {
   if (!userId) return
+  let client = db
+  let transactional = false
   try {
+    if (typeof db.connect === 'function') {
+      client = await db.connect()
+      transactional = true
+    }
+    if (transactional) await client.query('BEGIN')
     if (eventKey) {
-      const inserted = await db.query(
+      const inserted = await client.query(
         `INSERT INTO streak_events (id,user_id,event_key,occurred_at) VALUES (gen_random_uuid(),$1,$2,$3)
          ON CONFLICT (user_id,event_key) DO NOTHING RETURNING id`, [userId, eventKey, occurredAt]
       )
-      if (!inserted.rows[0]) return
+      if (!inserted.rows[0]) {
+        if (transactional) await client.query('ROLLBACK')
+        return
+      }
     }
-    const { rows } = await db.query('SELECT streak_count,last_post_at FROM users WHERE id=$1', [userId])
-    if (!rows[0]) return
+    const { rows } = await client.query('SELECT streak_count,last_post_at FROM users WHERE id=$1 FOR UPDATE', [userId])
+    if (!rows[0]) {
+      if (transactional) await client.query('ROLLBACK')
+      return
+    }
     const streak = nextStreak({ count: rows[0].streak_count || 0, lastPostAt: rows[0].last_post_at, occurredAt, timeZone })
-    await db.query('UPDATE users SET streak_count=$1,last_post_at=$2 WHERE id=$3', [streak, occurredAt, userId])
+    await client.query('UPDATE users SET streak_count=$1,last_post_at=$2 WHERE id=$3', [streak, occurredAt, userId])
+    if (transactional) await client.query('COMMIT')
   } catch (error) {
+    if (transactional) await client.query('ROLLBACK').catch(() => {})
     console.error('[streak] bump failed:', error.message)
+  } finally {
+    if (transactional) client.release()
   }
 }
 

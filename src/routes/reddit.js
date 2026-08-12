@@ -8,7 +8,7 @@ import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
 import { enforceProjectOwnership } from '../middleware/project.js'
-import { resolveAccount, listAccounts } from '../lib/socialAccounts.js'
+import { accountNeedsReconnect, resolveAccount, listAccounts } from '../lib/socialAccounts.js'
 import { encryptToken, decryptToken } from '../lib/tokenCrypto.js'
 import { logAudit } from '../lib/audit.js'
 
@@ -48,6 +48,7 @@ r.post('/post', async (req, res) => {
   try {
     const account = await resolveAccount('reddit_accounts', { userId: req.user.id, projectId, accountId })
     if (!account || !account.active) return res.status(404).json({ error: 'Ingen aktiv Reddit-konto funnet' })
+    if (accountNeedsReconnect(account)) return res.status(409).json({ error: 'Reddit-kontoen må kobles til på nytt', code: 'ACCOUNT_RECONNECT_REQUIRED' })
     const token = decryptToken(account.access_token)
 
     const form = new URLSearchParams({

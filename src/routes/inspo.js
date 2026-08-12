@@ -7,10 +7,12 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
+import { enforceProjectOwnership } from '../middleware/project.js'
 import { logAudit } from '../lib/audit.js'
 
 const r = Router()
 r.use(auth)
+r.use(enforceProjectOwnership)
 
 // GET /niches — alle aktive nisjer med item-count.
 r.get('/niches', async (req, res) => {
@@ -58,15 +60,15 @@ r.get('/niches/:slug/items', async (req, res) => {
 
 // POST /save — { inspoItemId, notes? }
 r.post('/save', async (req, res) => {
-  const { inspoItemId, notes } = req.body || {}
-  if (!inspoItemId) return res.status(400).json({ error: 'inspoItemId kreves' })
+  const { inspoItemId, notes, projectId } = req.body || {}
+  if (!inspoItemId || !projectId) return res.status(400).json({ error: 'inspoItemId og projectId kreves' })
   try {
     const { rows } = await pool.query(
-      `INSERT INTO user_saved_inspo (id, user_id, inspo_item_id, notes)
-       VALUES ($1,$2,$3,$4)
-       ON CONFLICT (user_id, inspo_item_id) DO UPDATE SET notes = EXCLUDED.notes
+      `INSERT INTO user_saved_inspo (id, user_id, project_id, inspo_item_id, notes)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (user_id, project_id, inspo_item_id) DO UPDATE SET notes = EXCLUDED.notes
        RETURNING id, saved_at`,
-      [crypto.randomUUID(), req.user.id, inspoItemId, notes || null]
+      [crypto.randomUUID(), req.user.id, projectId, inspoItemId, notes || null]
     )
     res.json({ ok: true, id: rows[0].id, savedAt: rows[0].saved_at })
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -74,6 +76,8 @@ r.post('/save', async (req, res) => {
 
 // GET /saved — brukerens lagrede inspo (tenant-isolert).
 r.get('/saved', async (req, res) => {
+  const { projectId } = req.query
+  if (!projectId) return res.status(400).json({ error: 'projectId kreves' })
   try {
     const { rows } = await pool.query(
       `SELECT s.id AS saved_id, s.notes, s.saved_at,
@@ -82,7 +86,7 @@ r.get('/saved', async (req, res) => {
        FROM user_saved_inspo s
        JOIN inspo_items i ON i.id = s.inspo_item_id
        LEFT JOIN inspo_niches n ON n.id = i.niche_id
-       WHERE s.user_id = $1 ORDER BY s.saved_at DESC LIMIT 200`, [req.user.id]
+       WHERE s.user_id = $1 AND s.project_id = $2 ORDER BY s.saved_at DESC LIMIT 200`, [req.user.id, projectId]
     )
     res.json(rows)
   } catch (e) { res.status(500).json({ error: e.message }) }

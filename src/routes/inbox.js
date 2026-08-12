@@ -10,9 +10,9 @@ import { auth } from '../middleware/auth.js'
 import { verifyMetaSignature } from '../lib/whatsapp.js'
 import { decryptToken } from '../lib/tokenCrypto.js'
 import { logAudit } from '../lib/audit.js'
+import { getMetaProvider } from '../lib/metaProvider.js'
 
 const r = Router()
-const GRAPH = 'https://graph.facebook.com/v21.0'
 
 // ─── Webhook: verifisering ───────────────────────────────────────────────────
 r.get('/webhook', (req, res) => {
@@ -71,7 +71,7 @@ async function handleInbox(payload) {
       if (!thread) { console.warn('[inbox/webhook] unknown recipient ignored', recipientId); continue }
       await pool.query(
         `INSERT INTO inbox_messages (id, thread_id, direction, text, meta_message_id)
-         VALUES ($1,$2,'inbound',$3,$4)`,
+         VALUES ($1,$2,'inbound',$3,$4) ON CONFLICT (meta_message_id) WHERE meta_message_id IS NOT NULL DO NOTHING`,
         [crypto.randomUUID(), thread.id, text || `[${ev.message?.attachments ? 'vedlegg' : 'melding'}]`, ev.message?.mid || null]
       )
       await pool.query("UPDATE inbox_threads SET last_message_at=NOW(), status='open' WHERE id=$1", [thread.id])
@@ -120,28 +120,15 @@ r.post('/reply', async (req, res) => {
     const { rows: acc } = await pool.query('SELECT * FROM meta_accounts WHERE id=$1 AND user_id=$2', [thread.meta_account_id, req.user.id])
     if (!acc[0]) return res.status(409).json({ error: 'Meta-konto ikke funnet' })
     const token = decryptToken(acc[0].access_token)
-    const sendId = thread.platform === 'instagram' ? (acc[0].ig_user_id || acc[0].page_id) : acc[0].page_id
-
-    const apiRes = await fetch(`${GRAPH}/${sendId}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        recipient: { id: thread.sender_id },
-        message: { text },
-        messaging_type: 'RESPONSE',
-        access_token: token,
-      }),
-    })
-    const data = await apiRes.json().catch(() => ({}))
-    if (!apiRes.ok) return res.status(502).json({ error: data?.error?.message || `Meta Send API ${apiRes.status}` })
+    const sent = await getMetaProvider().reply({ account: acc[0], platform: thread.platform, recipientId: thread.sender_id, text, accessToken: token })
 
     await pool.query(
       `INSERT INTO inbox_messages (id, thread_id, direction, text, meta_message_id) VALUES ($1,$2,'outbound',$3,$4)`,
-      [crypto.randomUUID(), thread.id, text, data.message_id || null]
+      [crypto.randomUUID(), thread.id, text, sent.id || null]
     )
     await pool.query('UPDATE inbox_threads SET last_message_at=NOW() WHERE id=$1', [thread.id])
     await logAudit({ userId: req.user.id, action: 'inbox.reply', resourceType: 'inbox_thread', resourceId: thread.id, metadata: { platform: thread.platform } })
-    res.json({ ok: true, metaMessageId: data.message_id || null })
+    res.json({ ok: true, metaMessageId: sent.id || null, mock: sent.mock === true })
   } catch (e) {
     console.error('[inbox/reply]', e.message)
     res.status(502).json({ error: e.message })

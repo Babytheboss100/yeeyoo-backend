@@ -118,5 +118,6 @@ test('auth callbacks exchange one-time codes without leaking JWTs in URLs', () =
   assert.match(source, /new URLSearchParams\(\{\s*code,/)
   assert.doesNotMatch(executable, /[?&](?:oauth_)?token=/)
   assert.doesNotMatch(executable, /sessionStorage/)
-  assert.match(source, /pendingStates\.delete\(state\)/)
+  assert.match(source, /consumeLoginOauthState\('(?:google|vipps)', state\)/)
+  assert.doesNotMatch(source, /const pendingStates = new Map/)
 })

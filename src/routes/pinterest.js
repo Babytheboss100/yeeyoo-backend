@@ -7,7 +7,7 @@ import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
 import { enforceProjectOwnership } from '../middleware/project.js'
-import { resolveAccount, listAccounts } from '../lib/socialAccounts.js'
+import { accountNeedsReconnect, resolveAccount, listAccounts } from '../lib/socialAccounts.js'
 import { encryptToken, decryptToken } from '../lib/tokenCrypto.js'
 import { logAudit } from '../lib/audit.js'
 
@@ -44,6 +44,7 @@ r.post('/post', async (req, res) => {
   try {
     const account = await resolveAccount('pinterest_accounts', { userId: req.user.id, projectId, accountId })
     if (!account || !account.active) return res.status(404).json({ error: 'Ingen aktiv Pinterest-konto funnet' })
+    if (accountNeedsReconnect(account)) return res.status(409).json({ error: 'Pinterest-kontoen må kobles til på nytt', code: 'ACCOUNT_RECONNECT_REQUIRED' })
     const board = boardId || account.default_board_id
     if (!board) return res.status(400).json({ error: 'boardId kreves (eller sett default_board_id på kontoen)' })
     const token = decryptToken(account.access_token)
