@@ -19,6 +19,7 @@ import imageRoutes from './routes/images.js'
 import affiliateRoutes from './routes/affiliate.js'
 import campaignRoutes from './routes/campaigns.js'
 import tonyRoutes from './routes/tony.js'
+import tonyPlanRoutes from './routes/tony-plans.js'
 import brandDnaRoutes from './routes/brand-dna.js'
 import whatsappRoutes from './routes/whatsapp.js'
 import metaRoutes from './routes/meta.js'
@@ -50,6 +51,7 @@ import channelOAuthRoutes from './routes/channel-oauth.js'
 import approvalRoutes from './routes/approvals.js'
 import activityRoutes from './routes/activity.js'
 import reportingRoutes from './routes/reporting.js'
+import jobRoutes from './routes/jobs.js'
 import { auth } from './middleware/auth.js'
 import { corsOptions, generalLimiter, generateLimiter, aiLimiter, suspiciousActivityLogger } from './middleware/security.js'
 import { trimStrings } from './middleware/sanitize.js'
@@ -123,6 +125,7 @@ app.use('/api/channel-oauth', channelOAuthRoutes)
 app.use('/api/approvals', approvalRoutes)
 app.use('/api/activity', activityRoutes)
 app.use('/api/reporting', reportingRoutes)
+app.use('/api/jobs', jobRoutes)
 app.use('/api/content', contentRoutes)
 app.use('/api/billing', billingRoutes)
 app.use('/api/team', teamRoutes)
@@ -135,6 +138,7 @@ app.use('/api/images', imageRoutes)
 app.use('/api/affiliate', affiliateRoutes)
 app.use('/api/campaigns', campaignRoutes)
 app.use('/api/tony', tonyRoutes)
+app.use('/api/tony-plans', tonyPlanRoutes)
 app.use('/api/brand-dna', brandDnaRoutes)
 app.use('/api/whatsapp', whatsappRoutes)
 app.use('/api/meta', metaRoutes)

@@ -1,5 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { assertObservedEvents, buildObservedLearning } from '../src/marketing/learningLoop.js'
+import { assertObservedEvents, buildObservedLearning, buildReportingSummary } from '../src/marketing/learningLoop.js'
 test('learning loop reports observed totals and never infers causation',()=>{const events=[{kind:'click',unit:'count',value:3,channel:'linkedin',artifactId:'a1',source:{provider:'mock'},occurredAt:'2026-01-01T00:00:00Z'}];assertObservedEvents(events);const result=buildObservedLearning(events);assert.equal(result.breakdown[0].observations['click:count'],3);assert.deepEqual(result.hypotheses,[]);assert.match(result.disclaimer,/not proof of causation/i)})
 test('learning loop rejects events without provenance',()=>assert.throws(()=>assertObservedEvents([{kind:'click'}]),/source and timestamp provenance/))
+test('reporting rejects fabricated or invalid metric values',()=>{const base={kind:'click',unit:'count',source:{provider:'mock'},occurredAt:'2026-01-01T00:00:00Z'};assert.throws(()=>assertObservedEvents([{...base,value:-1}]),/non-negative finite/);assert.throws(()=>assertObservedEvents([{...base,value:'NaN'}]),/non-negative finite/)})
+test('reporting summary does not infer missing metrics or attribution',()=>{const events=[{kind:'click',unit:'count',value:2,metadata:{channel:'linkedin'},campaignId:'c1',source:{provider:'mock'},occurredAt:'2026-01-01T00:00:00Z'}];const summary=buildReportingSummary(events);assert.deepEqual(summary.totals,{'click:count':2});assert.equal(summary.coverage.channels.linkedin,1);assert.equal('conversion:count' in summary.totals,false);assert.match(summary.truthPolicy,/Missing metrics are omitted/)})
