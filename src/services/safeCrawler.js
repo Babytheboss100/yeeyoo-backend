@@ -1,5 +1,8 @@
 import dns from 'node:dns/promises'
+import http from 'node:http'
+import https from 'node:https'
 import net from 'node:net'
+import nodeFetch from 'node-fetch'
 
 export const CRAWL_LIMITS = Object.freeze({ timeoutMs: 8_000, maxBytes: 2_000_000, maxRedirects: 3 })
 
@@ -60,6 +63,39 @@ async function resolveCrawlTarget(input, { lookup = dns.lookup } = {}) {
   return { url, addresses: Object.freeze(literal.map(({ address }) => address)) }
 }
 
+export function createPinnedLookup(hostname, approvedAddresses) {
+  const expected = hostname.toLowerCase().replace(/\.$/, '')
+  const approved = [...new Set(approvedAddresses)]
+  if (!approved.length || approved.some(blockedIp)) throw new CrawlError('BLOCKED_TARGET', 'Ingen godkjente offentlige adresser')
+  let cursor = 0
+  return (requestedHost, options, callback) => {
+    const requested = String(requestedHost).toLowerCase().replace(/\.$/, '')
+    if (requested !== expected) return callback(new CrawlError('DNS_REBINDING', 'Transport forsøkte et annet vertsnavn', 502))
+    const candidates = approved.map(address => ({ address, family: net.isIPv6(address) ? 6 : 4 }))
+    if (options?.all) return callback(null, candidates)
+    const selected = candidates[cursor++ % candidates.length]
+    callback(null, selected.address, selected.family)
+  }
+}
+
+// node-fetch accepts Node agents, allowing TLS SNI/Host to remain the validated
+// hostname while socket resolution is pinned to the exact approved DNS set.
+export function createPinnedFetch(fetchImpl = nodeFetch) {
+  return (url, options = {}) => {
+    const target = url instanceof URL ? url : new URL(url)
+    const approved = options.yeeyooApprovedAddresses
+    if (!Array.isArray(approved) || approved.length === 0) {
+      throw new CrawlError('UNPINNED_TRANSPORT', 'Crawlertransport krever godkjente DNS-adresser', 500)
+    }
+    const lookup = createPinnedLookup(target.hostname, approved)
+    const agent = target.protocol === 'https:'
+      ? new https.Agent({ lookup, keepAlive: false, maxSockets: 1 })
+      : new http.Agent({ lookup, keepAlive: false, maxSockets: 1 })
+    const { yeeyooApprovedAddresses: _internal, ...requestOptions } = options
+    return fetchImpl(target, { ...requestOptions, agent })
+  }
+}
+
 export async function validateCrawlUrl(input, options = {}) {
   return (await resolveCrawlTarget(input, options)).url
 }
@@ -67,7 +103,7 @@ export async function validateCrawlUrl(input, options = {}) {
 function normalizeType(value) { return String(value || '').split(';', 1)[0].trim().toLowerCase() }
 
 export async function safeCrawl(input, options = {}) {
-  const fetchImpl = options.fetchImpl || globalThis.fetch
+  const fetchImpl = options.fetchImpl || createPinnedFetch()
   const lookup = options.lookup || dns.lookup
   const timeoutMs = options.timeoutMs ?? CRAWL_LIMITS.timeoutMs
   const maxBytes = options.maxBytes ?? CRAWL_LIMITS.maxBytes
@@ -96,14 +132,22 @@ export async function safeCrawl(input, options = {}) {
     if (Number.isFinite(declared) && declared > maxBytes) throw new CrawlError('RESPONSE_TOO_LARGE', 'Responsen er for stor', 413)
     const chunks = []
     let size = 0
-    const reader = response.body?.getReader()
-    if (!reader) throw new CrawlError('EMPTY_RESPONSE', 'Responsen mangler innhold', 502)
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      size += value.byteLength
-      if (size > maxBytes) { await reader.cancel(); throw new CrawlError('RESPONSE_TOO_LARGE', 'Responsen er for stor', 413) }
-      chunks.push(value)
+    if (!response.body) throw new CrawlError('EMPTY_RESPONSE', 'Responsen mangler innhold', 502)
+    if (response.body.getReader) {
+      const reader = response.body.getReader()
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        size += value.byteLength
+        if (size > maxBytes) { await reader.cancel(); throw new CrawlError('RESPONSE_TOO_LARGE', 'Responsen er for stor', 413) }
+        chunks.push(value)
+      }
+    } else {
+      for await (const value of response.body) {
+        size += value.byteLength
+        if (size > maxBytes) { response.body.destroy?.(); throw new CrawlError('RESPONSE_TOO_LARGE', 'Responsen er for stor', 413) }
+        chunks.push(value)
+      }
     }
     const bytes = new Uint8Array(size)
     let offset = 0
