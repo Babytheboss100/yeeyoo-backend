@@ -5,6 +5,7 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
+import { enforceProjectOwnership } from '../middleware/project.js'
 import { encryptToken, decryptToken } from '../lib/tokenCrypto.js'
 import { logAudit } from '../lib/audit.js'
 import {
@@ -14,6 +15,7 @@ import {
 
 const r = Router()
 r.use(auth)
+r.use(enforceProjectOwnership)
 
 const PROVIDERS = ['klaviyo', 'mailchimp']
 

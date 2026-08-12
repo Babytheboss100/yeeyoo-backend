@@ -11,10 +11,12 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
+import { enforceProjectOwnership } from '../middleware/project.js'
 import { checkAILimit, logAIUsage } from '../middleware/aiLimit.js'
 
 const r = Router()
 r.use(auth)
+r.use(enforceProjectOwnership)
 
 // ── Provider-konfig ──────────────────────────────────────────────────
 // Hvert kall sender { system, messages, model } i normalisert form og

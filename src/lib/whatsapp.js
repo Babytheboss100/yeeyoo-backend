@@ -12,17 +12,17 @@ const GRAPH = 'https://graph.facebook.com/v21.0'
 
 // locale ('pt-BR' | 'no' | ...) → riktig WABA. Fallback: NO, så hvilken som
 // helst aktiv konto.
-export async function resolveWabaForLocale(locale) {
+export async function resolveWabaForLocale(locale, userId) {
   const cc = String(locale || '').toLowerCase().startsWith('pt') ? 'BR' : 'NO'
   const { rows } = await pool.query(
     `SELECT * FROM whatsapp_business_accounts
-     WHERE active = TRUE AND country_code = $1 ORDER BY created_at ASC LIMIT 1`,
-    [cc]
+     WHERE active = TRUE AND country_code = $1 AND user_id = $2 ORDER BY created_at ASC LIMIT 1`,
+    [cc, userId]
   )
   if (rows[0]) return rows[0]
   const { rows: fb } = await pool.query(
     `SELECT * FROM whatsapp_business_accounts
-     WHERE active = TRUE ORDER BY (country_code = 'NO') DESC, created_at ASC LIMIT 1`
+     WHERE active = TRUE AND user_id = $1 ORDER BY (country_code = 'NO') DESC, created_at ASC LIMIT 1`, [userId]
   )
   return fb[0] || null
 }
@@ -78,7 +78,7 @@ export async function sendWhatsAppMessage({ waba, to, text, template }) {
 // Returnerer true hvis gyldig. Hvis META_APP_SECRET ikke er satt → true (dev).
 export function verifyMetaSignature(rawBody, signatureHeader) {
   const secret = process.env.META_APP_SECRET
-  if (!secret) return true
+  if (!secret) return process.env.NODE_ENV !== 'production'
   if (!signatureHeader) return false
   const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(rawBody).digest('hex')
   try {

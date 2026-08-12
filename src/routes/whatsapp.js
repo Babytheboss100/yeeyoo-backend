@@ -17,6 +17,7 @@ import {
 } from '../lib/whatsapp.js'
 import { logAudit, maskPhone } from '../lib/audit.js'
 import { encryptToken } from '../lib/tokenCrypto.js'
+import { requireProject, sendProjectError } from '../middleware/project.js'
 
 const r = Router()
 
@@ -90,12 +91,8 @@ async function handleInbound(payload) {
 }
 
 // v1: WABA-operatør = admin-bruker (Heljar eier begge numre). Flagget i SESJON-J-PLAN.
-async function wabaOwnerUserId() {
-  const { rows } = await pool.query('SELECT id FROM users WHERE is_admin = TRUE ORDER BY created_at ASC LIMIT 1')
-  return rows[0]?.id || null
-}
-
 async function upsertInboundConversation(waba, customerPhone, customerName) {
+  if (!waba.user_id) throw new Error('WABA mangler tenant-eier')
   const { rows } = await pool.query(
     'SELECT * FROM whatsapp_conversations WHERE waba_account_id=$1 AND customer_phone=$2 LIMIT 1',
     [waba.id, customerPhone]
@@ -110,7 +107,7 @@ async function upsertInboundConversation(waba, customerPhone, customerName) {
   const { rows: created } = await pool.query(
     `INSERT INTO whatsapp_conversations (id, waba_account_id, user_id, customer_phone, customer_name, language)
      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [crypto.randomUUID(), waba.id, await wabaOwnerUserId(), customerPhone, customerName, language]
+    [crypto.randomUUID(), waba.id, waba.user_id, customerPhone, customerName, language]
   )
   return created[0]
 }
@@ -122,20 +119,21 @@ r.use(auth)
 // system_user_token krypteres ved insert.
 r.post('/accounts', async (req, res) => {
   if (!req.user.is_admin) return res.status(403).json({ error: 'Kun admin kan registrere WhatsApp-numre' })
-  const { countryCode, phoneNumber, wabaId, phoneNumberId, displayName, systemUserToken } = req.body || {}
+  const { countryCode, phoneNumber, wabaId, phoneNumberId, displayName, systemUserToken, projectId } = req.body || {}
   if (!countryCode || !phoneNumber || !wabaId || !phoneNumberId || !systemUserToken) {
     return res.status(400).json({ error: 'countryCode, phoneNumber, wabaId, phoneNumberId og systemUserToken kreves' })
   }
   try {
+    if (projectId) await requireProject(req, projectId)
     const id = crypto.randomUUID()
     await pool.query(
-      `INSERT INTO whatsapp_business_accounts (id, country_code, phone_number, waba_id, phone_number_id, display_name, system_user_token)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [id, countryCode, phoneNumber, wabaId, phoneNumberId, displayName || null, encryptToken(systemUserToken)]
+      `INSERT INTO whatsapp_business_accounts (id,user_id,project_id,country_code,phone_number,waba_id,phone_number_id,display_name,system_user_token)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [id, req.user.id, projectId || null, countryCode, phoneNumber, wabaId, phoneNumberId, displayName || null, encryptToken(systemUserToken)]
     )
     await logAudit({ userId: req.user.id, action: 'whatsapp.connect', resourceType: 'whatsapp_business_account', resourceId: id, metadata: { countryCode } })
     res.json({ id })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { if (!sendProjectError(res, e)) res.status(500).json({ error: e.message }) }
 })
 
 // POST /send — send tekst/template via WABA valgt på locale (eller låst til en
@@ -146,6 +144,7 @@ r.post('/send', async (req, res) => {
     return res.status(400).json({ error: 'to og text/template kreves' })
   }
   try {
+    if (projectId) await requireProject(req, projectId)
     let convo = null
     let waba = null
 
@@ -159,7 +158,7 @@ r.post('/send', async (req, res) => {
       const { rows: w } = await pool.query('SELECT * FROM whatsapp_business_accounts WHERE id=$1', [convo.waba_account_id])
       waba = w[0]
     } else {
-      waba = await resolveWabaForLocale(locale)
+      waba = await resolveWabaForLocale(locale, req.user.id)
     }
     if (!waba || !waba.active) {
       return res.status(503).json({ error: 'Ingen aktiv WhatsApp-konto for denne ruten' })
@@ -194,7 +193,7 @@ r.post('/send', async (req, res) => {
     res.json({ ok: true, conversationId: convo.id, metaMessageId: sent.metaMessageId })
   } catch (e) {
     console.error('[whatsapp/send]', e.message)
-    res.status(502).json({ error: e.message })
+    if (!sendProjectError(res, e)) res.status(502).json({ error: e.message })
   }
 })
 
@@ -218,7 +217,7 @@ r.get('/accounts', async (req, res) => {
     const { rows } = await pool.query(
       `SELECT id, country_code, phone_number, waba_id, phone_number_id, display_name,
               quality_rating, messaging_tier, active, created_at
-       FROM whatsapp_business_accounts ORDER BY created_at ASC`
+       FROM whatsapp_business_accounts WHERE user_id=$1 ORDER BY created_at ASC`, [req.user.id]
     )
     res.json(rows)
   } catch (e) {
@@ -232,6 +231,7 @@ r.get('/conversations', async (req, res) => {
     const params = [req.user.id]
     let where = 'c.user_id = $1'
     if (req.query.projectId) {
+      await requireProject(req, req.query.projectId)
       params.push(req.query.projectId)
       where += ` AND c.project_id = $${params.length}`
     }

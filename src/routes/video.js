@@ -8,11 +8,13 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
+import { enforceProjectOwnership } from '../middleware/project.js'
 import { resolveModel, submitVideo, checkVideo } from '../lib/falVideo.js'
 import { logAudit } from '../lib/audit.js'
 
 const r = Router()
 r.use(auth)
+r.use(enforceProjectOwnership)
 
 // POST /generate — { projectId?, prompt, model?, imageUrl? }
 r.post('/generate', async (req, res) => {

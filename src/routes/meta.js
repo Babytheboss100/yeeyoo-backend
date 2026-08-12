@@ -7,12 +7,14 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
+import { enforceProjectOwnership } from '../middleware/project.js'
 import { resolveMetaAccount, postToFacebookPage, postToInstagram } from '../lib/meta.js'
 import { encryptToken } from '../lib/tokenCrypto.js'
 import { logAudit } from '../lib/audit.js'
 
 const r = Router()
 r.use(auth)
+r.use(enforceProjectOwnership)
 
 // POST /accounts — koble til FB Page / IG (token krypteres ved insert).
 r.post('/accounts', async (req, res) => {

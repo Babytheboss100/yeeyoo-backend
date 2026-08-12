@@ -34,11 +34,6 @@ r.post('/webhook', async (req, res) => {
   try { await handleInbox(payload) } catch (e) { console.error('[inbox/webhook]', e.message) }
 })
 
-async function adminUserId() {
-  const { rows } = await pool.query('SELECT id FROM users WHERE is_admin = TRUE ORDER BY created_at ASC LIMIT 1')
-  return rows[0]?.id || null
-}
-
 // Finn meta_account for mottakende side (page_id eller ig_user_id).
 async function resolveAccountFor(platform, recipientId) {
   const col = platform === 'instagram' ? 'ig_user_id' : 'page_id'
@@ -53,11 +48,12 @@ async function upsertThread({ platform, recipientId, senderId, name }) {
   )
   if (rows[0]) return rows[0]
   const account = await resolveAccountFor(platform, recipientId)
-  const userId = account?.user_id || (await adminUserId())
+  // Unknown recipients are never assigned to an arbitrary tenant.
+  if (!account?.user_id) return null
   const { rows: created } = await pool.query(
     `INSERT INTO inbox_threads (id, user_id, project_id, meta_account_id, platform, recipient_id, sender_id, customer_name)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-    [crypto.randomUUID(), userId, account?.project_id || null, account?.id || null, platform, recipientId, senderId, name || null]
+    [crypto.randomUUID(), account.user_id, account.project_id || null, account.id, platform, recipientId, senderId, name || null]
   )
   return created[0]
 }
@@ -72,6 +68,7 @@ async function handleInbox(payload) {
       const text = ev.message?.text
       if (!senderId || !recipientId || ev.message?.is_echo) continue // hopp egne ekko
       const thread = await upsertThread({ platform, recipientId, senderId, name: null })
+      if (!thread) { console.warn('[inbox/webhook] unknown recipient ignored', recipientId); continue }
       await pool.query(
         `INSERT INTO inbox_messages (id, thread_id, direction, text, meta_message_id)
          VALUES ($1,$2,'inbound',$3,$4)`,
@@ -120,7 +117,7 @@ r.post('/reply', async (req, res) => {
     if (!rows[0]) return res.status(404).json({ error: 'Samtale ikke funnet' })
     const thread = rows[0]
     if (!thread.meta_account_id) return res.status(409).json({ error: 'Ingen tilkoblet Meta-konto for denne samtalen' })
-    const { rows: acc } = await pool.query('SELECT * FROM meta_accounts WHERE id=$1', [thread.meta_account_id])
+    const { rows: acc } = await pool.query('SELECT * FROM meta_accounts WHERE id=$1 AND user_id=$2', [thread.meta_account_id, req.user.id])
     if (!acc[0]) return res.status(409).json({ error: 'Meta-konto ikke funnet' })
     const token = decryptToken(acc[0].access_token)
     const sendId = thread.platform === 'instagram' ? (acc[0].ig_user_id || acc[0].page_id) : acc[0].page_id

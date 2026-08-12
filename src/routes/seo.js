@@ -2,10 +2,12 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
+import { enforceProjectOwnership, requireProject, sendProjectError } from '../middleware/project.js'
 import { checkAILimit, logAIUsage } from '../middleware/aiLimit.js'
 
 const r = Router()
 r.use(auth)
+r.use(enforceProjectOwnership)
 
 // /api/seo — SEO Agent. Per Sesjon I (PRIO 5) støttes nå to flyter:
 //   1. Legacy (Smart Planner): POST /generate uten action → genererer full
@@ -21,6 +23,7 @@ r.use(auth)
 // sammendrag hvis den finnes, for ikke å tape data fra Smart Planner.
 r.get('/:projectId', async (req, res) => {
   try {
+    await requireProject(req, req.params.projectId)
     const { rows: reports } = await pool.query(
       `SELECT id, url, keyword, result, created_at
        FROM seo_reports
@@ -31,6 +34,7 @@ r.get('/:projectId', async (req, res) => {
     )
     res.json(reports)
   } catch (e) {
+    if (sendProjectError(res, e)) return
     console.error('[seo/:projectId]', e.message)
     res.status(500).json({ error: e.message })
   }

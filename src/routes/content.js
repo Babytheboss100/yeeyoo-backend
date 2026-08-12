@@ -7,9 +7,14 @@ import { getSubscription, PLANS } from './billing.js'
 import { createNotification } from './notifications.js'
 import { validateGenerate } from '../middleware/sanitize.js'
 import { renderBrandedImageSafe } from '../services/imageRenderer.js'
+import { enforceProjectOwnership, requireProject, sendProjectError } from '../middleware/project.js'
+import { publishPost } from '../publishing/service.js'
+import { mockPublishingAdapter } from '../publishing/mockAdapter.js'
+import { buildContentQueueQuery } from '../marketing/contentQueue.js'
 
 const r = Router()
 r.use(auth)
+r.use(enforceProjectOwnership)
 
 // GET templates list
 r.get('/templates', (req, res) => res.json(TEMPLATES))
@@ -79,8 +84,7 @@ r.post('/generate', validateGenerate, async (req, res) => {
   try {
     let project = null
     if (projectId) {
-      const { rows } = await pool.query('SELECT * FROM projects WHERE id=$1 AND user_id=$2', [projectId, req.user.id])
-      project = rows[0]
+      project = await requireProject(req, projectId)
     }
 
     // Generate for each platform × each AI model in parallel
@@ -120,6 +124,7 @@ r.post('/generate', validateGenerate, async (req, res) => {
         .catch(e => console.error('Background image gen failed:', e.message))
     }
   } catch (e) {
+    if (sendProjectError(res, e)) return
     res.status(500).json({ error: e.message })
   }
 })
@@ -165,14 +170,13 @@ r.get('/daily-ideas', async (req, res) => {
 
 // GET all posts (queue + history)
 r.get('/posts', async (req, res) => {
-  const { status, projectId } = req.query
-  let q = 'SELECT p.*, pr.name as project_name, pr.color as project_color FROM posts p LEFT JOIN projects pr ON p.project_id=pr.id WHERE p.user_id=$1'
-  const params = [req.user.id]
-  if (status) { q += ` AND p.status=$${params.length+1}`; params.push(status) }
-  if (projectId) { q += ` AND p.project_id=$${params.length+1}`; params.push(projectId) }
-  q += ' ORDER BY p.created_at DESC LIMIT 100'
-  const { rows } = await pool.query(q, params)
+  const { status, projectId, platform } = req.query
+  try {
+  if (projectId) await requireProject(req, projectId)
+  const { sql, params } = buildContentQueueQuery({ userId: req.user.id, status, projectId, platform })
+  const { rows } = await pool.query(sql, params)
   res.json(rows)
+  } catch (error) { if (!sendProjectError(res, error)) res.status(500).json({ error: 'Kunne ikke hente innholdskø' }) }
 })
 
 // GET calendar posts for a given month
@@ -211,7 +215,17 @@ r.patch('/posts/:id', async (req, res) => {
     `UPDATE posts SET ${fields.join(',')} WHERE id=$${vals.length-1} AND user_id=$${vals.length} RETURNING *`,
     vals
   )
+  if (!rows[0]) return res.status(404).json({ error: 'Post ikke funnet' })
   res.json(rows[0])
+})
+
+// Local/test workflow only. Provider adapters replace this without changing the route contract.
+r.post('/posts/:id/publish', async (req, res) => {
+  if (process.env.PUBLISH_ADAPTER && process.env.PUBLISH_ADAPTER !== 'mock-local') {
+    return res.status(503).json({ error: 'Ingen sikker publiseringsadapter er konfigurert' })
+  }
+  const result = await publishPost({ userId: req.user.id, postId: req.params.id, adapter: mockPublishingAdapter })
+  res.status(result.status).json(result.body)
 })
 
 // DELETE post

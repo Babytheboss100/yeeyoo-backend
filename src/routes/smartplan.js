@@ -3,9 +3,14 @@ import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
 import { checkAILimit, logAIUsage } from '../middleware/aiLimit.js'
+import { enforceProjectOwnership } from '../middleware/project.js'
+import { normalizeRequestedPlatforms, buildPlannerCalendarQuery } from '../marketing/smartPlanner.js'
+import { getMarketingProfile } from '../marketing/profileStore.js'
+import { plannerContextFromProfile } from '../marketing/profile.js'
 
 const r = Router()
 r.use(auth)
+r.use(enforceProjectOwnership)
 
 // ─── Self-healing table creation (deprecated) ───────────────────────────────
 // Konsolidert: smartplan_businesses → businesses (Prisma-eid). Funksjonen er
@@ -260,7 +265,7 @@ Svar med denne eksakte JSON-strukturen:
 r.post('/generate-month', checkAILimit('smart_planner'), async (req, res) => {
   // Body-kontrakt (yeeyoo-next planner): { projectId, url?, month, year, platforms }.
   // Bakoverkompatibel: { businessId, year, month } støttes fortsatt direkte.
-  const { businessId, projectId, url, year, month, postsPerWeek = 3 } = req.body
+  const { businessId, projectId, url, year, month, postsPerWeek = 3, platforms: requestedPlatforms } = req.body
 
   // Akkumuler token-bruk over evt. analyse-kall + selve genereringen.
   let aiTokensIn = 0
@@ -308,7 +313,10 @@ r.post('/generate-month', checkAILimit('smart_planner'), async (req, res) => {
       return res.status(400).json({ error: 'projectId eller businessId kreves' })
     }
 
-    const analysis = buildAnalysisContext(biz)
+    const legacyAnalysis = buildAnalysisContext(biz)
+    const profile = projectId ? await getMarketingProfile({ userId: req.user.id, projectId }) : null
+    const profileContext = profile ? plannerContextFromProfile(profile) : {}
+    const analysis = { ...legacyAnalysis, ...Object.fromEntries(Object.entries(profileContext).filter(([, value]) => value && (!Array.isArray(value) || value.length))) }
     console.log('generate-month: business found:', biz.name, '| analysis keys:', Object.keys(analysis))
 
     // Calculate post dates for the month
@@ -336,7 +344,7 @@ r.post('/generate-month', checkAILimit('smart_planner'), async (req, res) => {
     const selectedDays = postDays.slice(0, maxPosts)
 
     // Platforms to rotate through
-    const platforms = ['linkedin', 'instagram', 'facebook', 'tiktok']
+    const platforms = normalizeRequestedPlatforms(requestedPlatforms)
     const pillars = analysis.contentPillars || ['Bransjenyheter', 'Tips', 'Kulissene', 'Kundehistorier']
 
     // Generate posts in batches to avoid rate limits
@@ -436,14 +444,14 @@ Generer nøyaktig ${selectedDays.length} innlegg. Varier innhold, pilarer og pla
     for (let i = 0; i < Math.min(selectedDays.length, generatedPosts.length); i++) {
       const day = selectedDays[i]
       const post = generatedPosts[i]
-      const platform = post.platform || platforms[i % platforms.length]
+      const platform = platforms.includes(post.platform) ? post.platform : platforms[i % platforms.length]
       const timeSlot = timeSlots[i % timeSlots.length]
       const scheduledAt = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}T${timeSlot}:00`
 
       const { rows } = await pool.query(
-        `INSERT INTO posts (id, user_id, platform, content, status, scheduled_at, business_id, ai_model)
-         VALUES ($1, $2, $3, $4, 'pending', $5, $6, 'claude') RETURNING *`,
-        [crypto.randomUUID(), req.user.id, platform, post.content, scheduledAt, biz.id]
+        `INSERT INTO posts (id,user_id,project_id,platform,content,status,scheduled_at,business_id,ai_model)
+         VALUES ($1,$2,$3,$4,$5,'pending',$6,$7,'claude') RETURNING *`,
+        [crypto.randomUUID(), req.user.id, projectId || biz.project_id || null, platform, post.content, scheduledAt, biz.id]
       )
       savedPosts.push(rows[0])
     }
@@ -463,30 +471,14 @@ r.get('/calendar', async (req, res) => {
   const year = parseInt(req.query.year) || new Date().getFullYear()
   const month = parseInt(req.query.month) || (new Date().getMonth() + 1)
   const businessId = req.query.businessId
+  const projectId = req.query.projectId
   const startDate = new Date(year, month - 1, 1)
   const endDate = new Date(year, month, 0, 23, 59, 59)
 
   try {
     await ensureSmartplanTable()
-    let q = `
-      SELECT p.*, b.name as business_name, b.industry as business_industry,
-        COALESCE(p.scheduled_at, p.created_at) as calendar_date
-      FROM posts p
-      LEFT JOIN businesses b ON p.business_id = b.id
-      WHERE p.user_id = $1
-        AND p.business_id IS NOT NULL
-        AND COALESCE(p.scheduled_at, p.created_at) BETWEEN $2 AND $3
-    `
-    const params = [req.user.id, startDate, endDate]
-
-    if (businessId) {
-      q += ` AND p.business_id = $4`
-      params.push(businessId)
-    }
-
-    q += ` ORDER BY COALESCE(p.scheduled_at, p.created_at) ASC`
-
-    const { rows } = await pool.query(q, params)
+    const { sql, params } = buildPlannerCalendarQuery({ userId: req.user.id, projectId, startDate, endDate, businessId })
+    const { rows } = await pool.query(sql, params)
     res.json(rows)
   } catch (e) {
     res.status(500).json({ error: e.message })

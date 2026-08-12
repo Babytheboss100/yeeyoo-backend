@@ -5,9 +5,12 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
+import { enforceProjectOwnership } from '../middleware/project.js'
+import { getMarketingProfile } from '../marketing/profileStore.js'
 
 const r = Router()
 r.use(auth)
+r.use(enforceProjectOwnership)
 
 // GET /?projectId= — hent moodboard (tom array hvis ingen).
 r.get('/', async (req, res) => {
@@ -17,7 +20,8 @@ r.get('/', async (req, res) => {
     const { rows } = await pool.query(
       'SELECT items, updated_at FROM moodboards WHERE project_id=$1 AND user_id=$2', [projectId, req.user.id]
     )
-    res.json({ items: rows[0]?.items || [], updatedAt: rows[0]?.updated_at || null })
+    const profile = await getMarketingProfile({ userId: req.user.id, projectId })
+    res.json({ items: rows[0]?.items || [], updatedAt: rows[0]?.updated_at || null, marketingProfile: profile })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

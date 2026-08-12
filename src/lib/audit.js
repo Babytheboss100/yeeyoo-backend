@@ -27,6 +27,6 @@ export async function logAudit({ userId = null, action, resourceType = null, res
   // Streak: enhver vellykket sosial post ('*.post') teller. DM-er
   // ('whatsapp.send') teller ikke. Fire-and-forget.
   if (action && action.endsWith('.post') && userId) {
-    await bumpStreak(userId)
+    await bumpStreak(userId, { eventKey: `${action}:${resourceId || 'unknown'}` })
   }
 }

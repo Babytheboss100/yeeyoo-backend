@@ -41,6 +41,8 @@ import photoshootRoutes from './routes/photoshoot.js'
 import translateImageRoutes from './routes/translateImage.js'
 import moodboardRoutes from './routes/moodboard.js'
 import oauthRoutes from './routes/oauth.js'
+import marketingProfileRoutes from './routes/marketing-profile.js'
+import marketingAuditRoutes from './routes/marketing-audit.js'
 import { auth } from './middleware/auth.js'
 import { corsOptions, generalLimiter, generateLimiter, aiLimiter, suspiciousActivityLogger } from './middleware/security.js'
 import { trimStrings } from './middleware/sanitize.js'
@@ -105,6 +107,8 @@ async function requireAdmin(req, res, next) {
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes)
 app.use('/api/projects', projectRoutes)
+app.use('/api/marketing-profile', marketingProfileRoutes)
+app.use('/api/marketing-audit', marketingAuditRoutes)
 app.use('/api/content', contentRoutes)
 app.use('/api/billing', billingRoutes)
 app.use('/api/team', teamRoutes)

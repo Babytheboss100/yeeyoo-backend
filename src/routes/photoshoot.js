@@ -6,12 +6,14 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
+import { enforceProjectOwnership } from '../middleware/project.js'
 import { checkAILimit, logAIUsage } from '../middleware/aiLimit.js'
 import { falSubmit, falPoll, extractImageUrl, aspectToImageSize } from '../lib/fal.js'
 import { logAudit } from '../lib/audit.js'
 
 const r = Router()
 r.use(auth)
+r.use(enforceProjectOwnership)
 
 const FLUX_PRO = 'fal-ai/flux-pro/v1.1'
 const PHOTOSHOOT_COST = 0.05 // estimat per bilde (USD)

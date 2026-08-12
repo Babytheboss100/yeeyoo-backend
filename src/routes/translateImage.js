@@ -9,12 +9,14 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
+import { enforceProjectOwnership } from '../middleware/project.js'
 import { checkAILimit, logAIUsage } from '../middleware/aiLimit.js'
 import { falRun, extractImageUrl } from '../lib/fal.js'
 import { logAudit } from '../lib/audit.js'
 
 const r = Router()
 r.use(auth)
+r.use(enforceProjectOwnership)
 
 const INPAINT_MODEL = 'fal-ai/flux/dev/inpainting'
 
