@@ -8,6 +8,7 @@
     "test": "node --test test/*.test.js",
     "db:migrate": "node scripts/migrate.js",
     "db:seed:test": "node scripts/seed-test.js"
+    ,"db:seed:phase19": "node scripts/seed-phase19.js"
   },
   "dependencies": {
     "@fal-ai/client": "^1.9.5",
