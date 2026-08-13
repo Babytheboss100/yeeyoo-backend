@@ -20,7 +20,10 @@ export async function consumeApprovalEnvelope({approvalId,userId,projectId,campa
     if(duplicate.rows[0]){await client.query('COMMIT');return{allowed:false,duplicate:true,code:'ACTION_REPLAY_DENIED'}}
     const [approvalResult,policyResult]=await Promise.all([
       client.query(`SELECT * FROM autopilot_action_approvals WHERE id=$1 AND user_id=$2 AND project_id=$3 AND campaign_id=$4 FOR UPDATE`,[approvalId,userId,projectId,campaignId]),
-      client.query(`SELECT * FROM autopilot_policies WHERE project_id=$1 AND campaign_id=$2`,[projectId,campaignId]),
+      // Keep the policy version stable until the approval decision and audit are
+      // committed. Otherwise a concurrent policy update can make a stale
+      // approval appear current between this read and the consume write.
+      client.query(`SELECT * FROM autopilot_policies WHERE project_id=$1 AND campaign_id=$2 FOR UPDATE`,[projectId,campaignId]),
     ])
     const approval=approvalResult.rows[0],policy=policyResult.rows[0]
     const decision=authorizeAutopilot({policy:{...policy,level:Number(policy?.level),version:Number(policy?.version),maxBudget:policy?.max_budget,projectId:policy?.project_id,campaignId:policy?.campaign_id},action,context,approval,now})
