@@ -13,6 +13,9 @@ export async function consumeApprovalEnvelope({approvalId,userId,projectId,campa
   const client=await db.connect()
   try{
     await client.query('BEGIN')
+    // Serialize identical action keys before checking the audit ledger. A plain
+    // SELECT cannot prevent two concurrent transactions both observing absence.
+    await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1,0))`,[`${projectId}:${idempotencyKey}`])
     const duplicate=await client.query(`SELECT decision,decision_code FROM autopilot_action_audit WHERE project_id=$1 AND idempotency_key=$2 FOR UPDATE`,[projectId,idempotencyKey])
     if(duplicate.rows[0]){await client.query('COMMIT');return{allowed:false,duplicate:true,code:'ACTION_REPLAY_DENIED'}}
     const [approvalResult,policyResult]=await Promise.all([
