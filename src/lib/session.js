@@ -14,7 +14,9 @@ export function parseCookies(header = '') {
   return Object.fromEntries(header.split(';').map((part) => {
     const at = part.indexOf('=')
     if (at < 0) return ['', '']
-    return [part.slice(0, at).trim(), decodeURIComponent(part.slice(at + 1).trim())]
+    const key = part.slice(0, at).trim()
+    try { return [key, decodeURIComponent(part.slice(at + 1).trim())] }
+    catch { return ['', ''] }
   }).filter(([key]) => key))
 }
 

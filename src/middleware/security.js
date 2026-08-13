@@ -17,6 +17,12 @@ const ALLOWED_ORIGINS = [
 if (process.env.NODE_ENV !== 'production') {
   ALLOWED_ORIGINS.push('http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:3000')
 }
+try {
+  const configuredFrontend = new URL(String(process.env.FRONTEND_URL || ''))
+  if (['http:', 'https:'].includes(configuredFrontend.protocol) && !configuredFrontend.username && !configuredFrontend.password) {
+    ALLOWED_ORIGINS.push(configuredFrontend.origin)
+  }
+} catch { /* fail closed when FRONTEND_URL is absent or malformed */ }
 
 export const corsOptions = {
   origin(origin, callback) {

@@ -258,6 +258,7 @@ r.post('/refresh', requireTrustedOrigin, async (req, res) => {
     setSessionCookies(res, session)
     res.status(204).end()
   } catch {
+    clearSessionCookies(res)
     res.status(401).json({ error: 'Ugyldig eller utløpt refresh token' })
   }
 })
