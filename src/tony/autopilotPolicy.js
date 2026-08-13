@@ -21,7 +21,7 @@ export function normalizePersistedApproval(value) {
   if (!value || typeof value !== 'object') return null
   return Object.freeze({
     status: value.status || (value.revoked_at ? 'revoked' : 'approved'),
-    action: value.action, projectId: value.projectId ?? value.project_id, campaignId: value.campaignId ?? value.campaign_id,
+    action: value.action, userId: value.userId ?? value.user_id, projectId: value.projectId ?? value.project_id, campaignId: value.campaignId ?? value.campaign_id,
     approvedByUserId: value.approvedByUserId ?? value.approved_by_user_id, approvedAt: value.approvedAt ?? value.approved_at,
     expiresAt: value.expiresAt ?? value.expires_at, revokedAt: value.revokedAt ?? value.revoked_at,
     usedAt: value.usedAt ?? value.consumedAt ?? value.consumed_at, nonce: value.nonce, fingerprint: value.fingerprint,
@@ -39,7 +39,7 @@ export function authorizeAutopilot({ policy, action, context, approval = null, n
     approval = normalizePersistedApproval(approval)
     if (!approval || approval.status !== 'approved' || approval.revokedAt) return deny('VALID_APPROVAL_REQUIRED')
     if (!approval.approvedByUserId || !approval.approvedAt) return deny('VALID_APPROVAL_REQUIRED')
-    if (approval.action !== action || approval.projectId !== context.projectId || approval.campaignId !== context.campaignId) return deny('APPROVAL_SCOPE_MISMATCH')
+    if (approval.action !== action || approval.userId !== context.userId || approval.projectId !== context.projectId || approval.campaignId !== context.campaignId) return deny('APPROVAL_SCOPE_MISMATCH')
     const expiresAt = Date.parse(approval.expiresAt)
     const approvedAt = Date.parse(approval.approvedAt)
     if (!Number.isFinite(expiresAt) || !Number.isFinite(approvedAt) || approvedAt > now || expiresAt <= approvedAt || expiresAt <= now) return deny('APPROVAL_EXPIRED')

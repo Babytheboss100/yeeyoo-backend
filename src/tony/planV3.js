@@ -26,6 +26,7 @@ export function createTonyPlanV3({ userId, projectId, objective, campaignId = nu
       id: `${id}:${key}`, key, specialist, capability: SPECIALIST_CAPABILITIES[specialist].at(-1),
       dependencies: index ? [`${id}:${FLOW[index - 1][0]}`] : [], status: 'planned',
       inputArtifactVersions: [], outputArtifactIds: [], aiJobId: null, error: null,
+      idempotencyKeys: [],
       approvalRequired: false, startedAt: null, completedAt: null,
     })
   })

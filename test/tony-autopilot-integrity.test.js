@@ -8,13 +8,13 @@ import fs from 'node:fs'
 const now=Date.parse('2026-02-01T12:00:00Z')
 const policy={level:3,version:7,projectId:'p1',campaignId:'c1',maxBudget:500,currency:'NOK',channels:['meta','linkedin']}
 const context={action:'publish',userId:'u1',projectId:'p1',campaignId:'c1',planId:'plan1',artifactId:'a1',artifactVersion:3,budget:400,currency:'NOK',channels:['meta'],providerConnected:true,providerConnectionId:'conn1',providerConnectionVersion:9,approvalNonce:'nonce1'}
-const validApproval=()=>({status:'approved',action:'publish',projectId:'p1',campaignId:'c1',approvedByUserId:'owner',approvedAt:'2026-02-01T11:00:00Z',expiresAt:'2026-02-01T13:00:00Z',nonce:'nonce1',fingerprint:approvalFingerprint({...context,policyVersion:policy.version})})
+const validApproval=()=>({status:'approved',action:'publish',userId:'u1',projectId:'p1',campaignId:'c1',approvedByUserId:'owner',approvedAt:'2026-02-01T11:00:00Z',expiresAt:'2026-02-01T13:00:00Z',nonce:'nonce1',fingerprint:approvalFingerprint({...context,policyVersion:policy.version})})
 
 test('approval is bound to action, actor context, plan, policy and provider connection version',()=>{
   assert.equal(authorizeAutopilot({policy,action:'publish',context,approval:validApproval(),now}).allowed,true)
   const mutations=[
     ['send',context,validApproval(),'APPROVAL_SCOPE_MISMATCH'],
-    ['publish',{...context,userId:'u2'},validApproval(),'APPROVED_STATE_CHANGED'],
+    ['publish',{...context,userId:'u2'},validApproval(),'APPROVAL_SCOPE_MISMATCH'],
     ['publish',{...context,planId:'plan2'},validApproval(),'APPROVED_STATE_CHANGED'],
     ['publish',context,validApproval(), 'APPROVED_STATE_CHANGED', {...policy,version:8}],
     ['publish',{...context,providerConnectionVersion:10},validApproval(),'APPROVED_STATE_CHANGED'],

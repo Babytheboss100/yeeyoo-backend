@@ -18,6 +18,17 @@ export function assertSafeToolOutput(output, projectId) {
   if (output.projectId && output.projectId !== projectId) throw new TonyToolError('CROSS_PROJECT_OUTPUT', 'Tool returned another project context')
   if (output.status && ['approved', 'published', 'sent', 'connected', 'deleted'].includes(output.status)) throw new TonyToolError('UNSAFE_TOOL_OUTPUT', 'Draft orchestration produced a privileged side effect')
   if (output.spend || output.providerPostId || output.sentAt) throw new TonyToolError('UNSAFE_TOOL_OUTPUT', 'Draft orchestration produced a privileged side effect')
+  const pending = [output]
+  let inspected = 0
+  while (pending.length) {
+    const value = pending.pop()
+    if (++inspected > 2000) throw new TonyToolError('INVALID_TOOL_OUTPUT', 'Tool output is too complex')
+    if (!value || typeof value !== 'object') continue
+    for (const [key, nested] of Object.entries(value)) {
+      if (['providerPostId','sentAt','connectedAt','deletedAt','spendAmount'].includes(key) && nested) throw new TonyToolError('UNSAFE_TOOL_OUTPUT', 'Tool output contains nested privileged execution evidence')
+      if (nested && typeof nested === 'object') pending.push(nested)
+    }
+  }
   return output
 }
 

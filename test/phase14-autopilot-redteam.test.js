@@ -8,7 +8,7 @@ import { createTonyPlanV3 } from '../src/tony/planV3.js'
 const now=Date.parse('2026-03-01T12:00:00Z')
 const policy={level:3,version:2,projectId:'p1',campaignId:'c1',maxBudget:100,currency:'NOK',channels:['meta']}
 const context={userId:'u1',projectId:'p1',campaignId:'c1',planId:'plan1',artifactId:'a1',artifactVersion:1,budget:50,currency:'NOK',channels:['meta'],providerConnected:true,providerConnectionId:'conn1',providerConnectionVersion:1,approvalNonce:'00000000-0000-4000-8000-000000000001'}
-const row=()=>({status:'approved',action:'publish',project_id:'p1',campaign_id:'c1',approved_by_user_id:'owner',approved_at:'2026-03-01T11:00:00Z',expires_at:'2026-03-01T13:00:00Z',nonce:context.approvalNonce,fingerprint:approvalFingerprint({...context,action:'publish',policyVersion:2})})
+const row=()=>({status:'approved',action:'publish',user_id:'u1',project_id:'p1',campaign_id:'c1',approved_by_user_id:'owner',approved_at:'2026-03-01T11:00:00Z',expires_at:'2026-03-01T13:00:00Z',nonce:context.approvalNonce,fingerprint:approvalFingerprint({...context,action:'publish',policyVersion:2})})
 
 test('raw persisted consumed_at and revoked_at approval rows fail closed',()=>{
   assert.equal(authorizeAutopilot({policy,action:'publish',context,approval:row(),now}).allowed,true)

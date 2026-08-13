@@ -5,6 +5,7 @@ import dotenv from 'dotenv'
 dotenv.config()
 
 import { initDB, pool } from './db.js'
+import { createGracefulShutdown } from './services/databaseStartup.js'
 import authRoutes from './routes/auth.js'
 import projectRoutes from './routes/projects.js'
 import contentRoutes from './routes/content.js'
@@ -306,6 +307,10 @@ async function start() {
   }
 }
 start()
+
+const shutdown=createGracefulShutdown({pool,exit:(code)=>{process.exitCode=code}})
+process.once('SIGTERM',()=>shutdown('SIGTERM'))
+process.once('SIGINT',()=>shutdown('SIGINT'))
 
 // Catch unhandled errors at module level
 process.on('uncaughtException', (e) => {

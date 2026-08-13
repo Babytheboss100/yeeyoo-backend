@@ -1,11 +1,16 @@
 import pg from 'pg'
 import dotenv from 'dotenv'
+import { databaseSslForRuntime, databaseUrlForRuntime, strictTestMode, verifyStrictTestDatabase } from './services/databaseStartup.js'
 dotenv.config()
 
 const { Pool } = pg
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  connectionString: databaseUrlForRuntime(process.env),
+  ssl: databaseSslForRuntime(process.env),
+  max: Number(process.env.DB_POOL_MAX || 10),
+  connectionTimeoutMillis: Number(process.env.DB_CONNECT_TIMEOUT_MS || 10000),
+  idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS || 30000),
+  allowExitOnIdle: process.env.NODE_ENV === 'test',
 })
 
 // Post-ALTER verifikasjon mot information_schema.columns. Fanger silent
@@ -32,6 +37,10 @@ async function verifyColumn(table, column, { hasDefault = null } = {}) {
 }
 
 export async function initDB() {
+  if(strictTestMode(process.env)){
+    const client=await pool.connect()
+    try{return await verifyStrictTestDatabase(client)}finally{client.release()}
+  }
   try {
     const dbUrl = new URL(process.env.DATABASE_URL || '')
     console.log(`📡 DB connecting to: ${dbUrl.hostname}${dbUrl.pathname} (port ${dbUrl.port || 5432})`)

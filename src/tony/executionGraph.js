@@ -9,7 +9,7 @@ export function assertExecutionGraph(plan, expectedProjectId = null) {
   const ids = new Set(plan.steps.map(step => step?.id))
   if (ids.size !== plan.steps.length || ids.has(undefined)) throw new ExecutionGraphError('INVALID_EXECUTION_GRAPH', 'Execution step identifiers must be unique')
   for (const step of plan.steps) {
-    if (typeof step.id !== 'string' || !(step.status in TRANSITIONS) || !Array.isArray(step.dependencies) || !Array.isArray(step.outputArtifactIds) || step.dependencies.some(id => !ids.has(id) || id === step.id)) throw new ExecutionGraphError('INVALID_EXECUTION_GRAPH', 'Execution dependencies or state are invalid')
+    if (typeof step.id !== 'string' || !(step.status in TRANSITIONS) || !Array.isArray(step.dependencies) || !Array.isArray(step.outputArtifactIds) || !Array.isArray(step.idempotencyKeys || []) || step.dependencies.some(id => !ids.has(id) || id === step.id)) throw new ExecutionGraphError('INVALID_EXECUTION_GRAPH', 'Execution dependencies or state are invalid')
   }
   const visiting = new Set(), visited = new Set(), byId = new Map(plan.steps.map(step => [step.id, step]))
   const visit = id => { if (visiting.has(id)) throw new ExecutionGraphError('INVALID_EXECUTION_GRAPH', 'Execution graph contains a dependency cycle'); if (visited.has(id)) return; visiting.add(id); for (const dependency of byId.get(id).dependencies) visit(dependency); visiting.delete(id); visited.add(id) }
@@ -28,7 +28,8 @@ export function transitionStep(plan, { stepId, from, to, idempotencyKey, aiJobId
   const index = plan.steps.findIndex(step => step.id === stepId)
   if (index < 0) throw new ExecutionGraphError('STEP_NOT_FOUND', 'Execution step was not found')
   const current = plan.steps[index]
-  if (current.lastIdempotencyKey === idempotencyKey) return plan
+  const consumedKeys = current.idempotencyKeys || (current.lastIdempotencyKey ? [current.lastIdempotencyKey] : [])
+  if (consumedKeys.includes(idempotencyKey)) return plan
   if (current.status !== from) throw new ExecutionGraphError('STALE_STEP_STATE', 'Execution step state changed')
   if (!TRANSITIONS[from]?.includes(to)) throw new ExecutionGraphError('INVALID_STEP_TRANSITION', `Cannot transition ${from} to ${to}`)
   if (to === 'running' && !runnableSteps(plan).some(step => step.id === stepId)) throw new ExecutionGraphError('DEPENDENCY_INCOMPLETE', 'Step dependencies are incomplete')
@@ -36,7 +37,7 @@ export function transitionStep(plan, { stepId, from, to, idempotencyKey, aiJobId
   const next = { ...current, status: to, aiJobId: aiJobId || current.aiJobId, outputArtifactIds: [...new Set([...current.outputArtifactIds, ...outputArtifactIds])],
     error: to === 'failed' ? String(error || 'Execution failed').slice(0, 1000) : null, lastIdempotencyKey: idempotencyKey,
     startedAt: to === 'running' ? (current.startedAt || timestamp) : current.startedAt,
-    completedAt: TERMINAL.has(to) ? timestamp : null }
+    completedAt: TERMINAL.has(to) ? timestamp : null, idempotencyKeys: [...consumedKeys, idempotencyKey].slice(-100) }
   const steps = plan.steps.map((step, i) => i === index ? Object.freeze(next) : step)
   const status = steps.every(step => step.status === 'completed') ? 'completed' : steps.some(step => step.status === 'running') ? 'running' : steps.some(step => step.status === 'failed') ? 'failed' : plan.status
   return Object.freeze({ ...plan, status, steps, updatedAt: timestamp })
