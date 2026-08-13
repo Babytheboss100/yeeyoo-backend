@@ -52,6 +52,7 @@ import approvalRoutes from './routes/approvals.js'
 import activityRoutes from './routes/activity.js'
 import reportingRoutes from './routes/reporting.js'
 import jobRoutes from './routes/jobs.js'
+import testSessionRoutes from './routes/test-session.js'
 import { auth } from './middleware/auth.js'
 import { corsOptions, generalLimiter, generateLimiter, aiLimiter, suspiciousActivityLogger } from './middleware/security.js'
 import { trimStrings } from './middleware/sanitize.js'
@@ -115,6 +116,7 @@ async function requireAdmin(req, res, next) {
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes)
+app.use('/api/test/session', testSessionRoutes)
 app.use('/api/projects', projectRoutes)
 app.use('/api/marketing-profile', marketingProfileRoutes)
 app.use('/api/marketing-audit', marketingAuditRoutes)
