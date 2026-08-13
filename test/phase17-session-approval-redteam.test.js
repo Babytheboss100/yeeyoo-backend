@@ -31,7 +31,7 @@ test('refresh exchange and logout require trusted origin, revoke and clear',()=>
 
 test('test-session bootstrap stays test-only keyed identity-bound one-time and strict-cookie',()=>{
   const source=fs.readFileSync(new URL('../src/routes/test-session.js',import.meta.url),'utf8')
-  for(const invariant of ["env.NODE_ENV==='test'","YEEYOO_ENABLE_TEST_SESSION==='true'","YEEYOO_TEST_SESSION_KEY.length>=32","current_database() AS name","yeeyoo_phase13_test","ON CONFLICT(code_hash) DO NOTHING","sameSite:'strict'","httpOnly:true"])assert.ok(source.includes(invariant),invariant)
+  for(const invariant of ["env.NODE_ENV==='test'","YEEYOO_ENABLE_TEST_SESSION==='true'","strongTestKey(env.YEEYOO_TEST_SESSION_KEY)","key.length>=32","current_database() AS name","yeeyoo_phase13_test","ON CONFLICT(code_hash) DO NOTHING","sameSite:'strict'","httpOnly:true"])assert.ok(source.includes(invariant),invariant)
   assert.doesNotMatch(source,/res\.json\([^\n]*(?:accessToken|refreshToken)/)
 })
 

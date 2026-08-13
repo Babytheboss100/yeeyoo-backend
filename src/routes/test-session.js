@@ -15,12 +15,21 @@ async function createShortTestSession(userId,req,client){const accessToken=crypt
   VALUES($1,$2,$3,$4,$5,NOW()+INTERVAL '15 minutes',NOW()+INTERVAL '15 minutes',$6,$7)`,[crypto.randomUUID(),userId,digest(accessToken),digest(crypto.randomBytes(32).toString('base64url')),crypto.randomUUID(),(req.headers['user-agent']||'').slice(0,500),req.ip||null]);return{accessToken}}
 function setShortTestCookie(res,session){res.cookie(ACCESS_COOKIE,session.accessToken,{httpOnly:true,secure:false,sameSite:'strict',path:'/',maxAge:15*60*1000});res.set('Cache-Control','no-store')}
 
-export function testSessionEnabled(env=process.env){return env.NODE_ENV==='test'&&env.YEEYOO_ENABLE_TEST_SESSION==='true'&&typeof env.YEEYOO_TEST_SESSION_KEY==='string'&&env.YEEYOO_TEST_SESSION_KEY.length>=32&&Boolean(env.YEEYOO_TEST_DATABASE_URL)}
+const LOCAL_HOSTS=new Set(['localhost','127.0.0.1','[::1]'])
+function localRequestHost(req){
+  // Use the direct Host header, never X-Forwarded-Host. `trust proxy` is enabled
+  // globally and a forwarded host must not make this test-only route reachable.
+  const raw=String(req.get('host')||'').trim().toLowerCase()
+  const host=raw.startsWith('[')?raw.slice(0,raw.indexOf(']')+1):raw.split(':')[0]
+  return LOCAL_HOSTS.has(host)
+}
+const strongTestKey=key=>typeof key==='string'&&key.length>=32&&new Set(key).size>=12
+export function testSessionEnabled(env=process.env){return env.NODE_ENV==='test'&&env.YEEYOO_ENABLE_TEST_SESSION==='true'&&strongTestKey(env.YEEYOO_TEST_SESSION_KEY)&&Boolean(env.YEEYOO_TEST_DATABASE_URL)}
 
 export function createTestSessionRouter({db=pool,env=process.env,create=createShortTestSession,setCookies=setShortTestCookie}={}){
   const r=Router()
   r.post('/',async(req,res)=>{
-    if(!testSessionEnabled(env))return res.status(404).json({error:'Not found'})
+    if(!testSessionEnabled(env)||!localRequestHost(req))return res.status(404).json({error:'Not found'})
     const tenant=String(req.body?.tenant||'');const userId=TEST_TENANTS[tenant]
     if(!userId||!safeEqual(req.get('X-Yeeyoo-Test-Key'),env.YEEYOO_TEST_SESSION_KEY))return res.status(403).json({error:'Forbidden'})
     const client=await db.connect()

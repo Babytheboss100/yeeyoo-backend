@@ -9,6 +9,7 @@
     "db:migrate": "node scripts/migrate.js",
     "db:seed:test": "node scripts/seed-test.js"
     ,"db:seed:phase19": "node scripts/seed-phase19.js"
+    ,"start:check": "node scripts/phase20-start-check.js"
   },
   "dependencies": {
     "@fal-ai/client": "^1.9.5",
