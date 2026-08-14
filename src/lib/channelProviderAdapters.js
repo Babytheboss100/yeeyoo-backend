@@ -13,7 +13,7 @@ const requireProvider = provider => {
 
 // Offline contract adapter. It deliberately cannot accept a live transport.
 // Replace through this interface when sandbox credentials are approved.
-export function createMockChannelProviderAdapter(provider, { now = () => new Date().toISOString(), id = crypto.randomUUID } = {}) {
+export function createMockChannelProviderAdapter(provider, { now = () => new Date().toISOString(), id = crypto.randomUUID, metaPages, discoveryError = null } = {}) {
   requireProvider(provider)
   const sessions = new Map()
   return Object.freeze({
@@ -29,7 +29,13 @@ export function createMockChannelProviderAdapter(provider, { now = () => new Dat
       const session = sessions.get(state)
       if (!session || session.projectId !== projectId || session.used || !code) throw new ChannelProviderError('INVALID_OAUTH_STATE', 'OAuth state is invalid or already used')
       session.used = true
-      return { externalAccountId: `mock:${provider}:${projectId}`, displayName: `${provider} sandbox`, expiresAt: null, scopes: [], mock: true }
+      return { externalAccountId: `mock:${provider}:${projectId}`, displayName: `${provider} sandbox`, expiresAt: null, scopes: provider === 'meta' ? ['pages_show_list','instagram_basic'] : [], mock: true }
+    },
+    discoverAccounts({ connection }) {
+      if (provider !== 'meta') throw new ChannelProviderError('CAPABILITY_UNAVAILABLE', 'Account discovery is unavailable')
+      if (!connection?.id) throw new ChannelProviderError('CONNECTION_REQUIRED', 'Connection is required')
+      if (discoveryError) throw discoveryError
+      return { pages: metaPages || [{ id:'mock-page-1', name:'Mock Facebook Page', instagramProfessionalAccount:{ id:'mock-ig-1', username:'mock_business' } }], mock:true }
     },
     refresh({ connection }) {
       if (!connection?.id) throw new ChannelProviderError('CONNECTION_REQUIRED', 'Connection is required')
@@ -48,8 +54,9 @@ export function createMockChannelProviderAdapter(provider, { now = () => new Dat
       return { provider, providerPostId: `mock:${provider}:${idempotencyKey}`, status: 'published', mock: true }
     },
     normalizeError(error) {
-      return { code: error?.code || 'PROVIDER_ERROR', message: error instanceof ChannelProviderError ? error.message : 'Provider request failed', retryable: error?.retryable === true }
+      const code=error?.code||'PROVIDER_ERROR'
+      const safe={token_expired:'Provider authorization expired',invalid_token:'Provider authorization is invalid',CAPABILITY_UNAVAILABLE:'Provider capability is unavailable'}
+      return { code, message:safe[code] || (error instanceof ChannelProviderError ? error.message : 'Provider request failed'), retryable:error?.retryable===true }
     },
   })
 }
-

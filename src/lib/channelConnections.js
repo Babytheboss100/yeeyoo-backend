@@ -13,6 +13,24 @@ export function connectionCapabilities(provider) {
   return { ...(CAPABILITIES[provider] || { contactsSync: false, campaigns: false, publish: false, inbox: false }) }
 }
 
+export function capabilityState({ supported = false, authorized = false, ready = false } = {}) {
+  const truthfulReady = Boolean(supported && authorized && ready)
+  return {
+    supported: Boolean(supported), authorized: Boolean(supported && authorized), ready: truthfulReady,
+    reason: !supported ? 'unsupported' : !authorized ? 'authorization_required' : !truthfulReady ? 'setup_required' : null,
+  }
+}
+
+export function metaDiscoveryCapabilities({ scopes = [], connected = false, pages = [] } = {}) {
+  const granted = new Set(scopes)
+  const pageAuthorized = granted.has('pages_show_list')
+  const instagramAuthorized = granted.has('instagram_basic') && pageAuthorized
+  return {
+    facebookPageDiscovery: capabilityState({ supported:true, authorized:pageAuthorized, ready:connected && pages.length > 0 }),
+    instagramProfessionalDiscovery: capabilityState({ supported:true, authorized:instagramAuthorized, ready:connected && pages.some(page => page.instagramProfessionalAccount) }),
+  }
+}
+
 export function connectionStatus(row, now = new Date()) {
   if (!row?.active) return 'revoked'
   if (row.last_error) return 'error'
@@ -33,10 +51,9 @@ export function toChannelConnection(row, provider, now = new Date()) {
     status: connectionStatus(row, now),
     reconnectRequired: connectionStatus(row, now) === 'reconnect_required',
     scopes: Array.isArray(row.scopes) ? row.scopes : [],
-    capabilities: connectionCapabilities(provider),
+    capabilities: { ...connectionCapabilities(provider), ...(row.capabilities || {}) },
     lastVerifiedAt: row.last_verified_at || null,
     error: row.last_error ? { code: row.last_error_code || 'PROVIDER_ERROR', message: 'Provider connection requires attention' } : null,
     createdAt: row.created_at || null,
   }
 }
-

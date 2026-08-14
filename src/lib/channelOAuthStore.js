@@ -14,13 +14,13 @@ export async function createChannelOAuthState({ userId, projectId, provider, red
 }
 
 // Atomic delete makes the state one-time even when callbacks race.
-export async function consumeChannelOAuthState({ state, projectId, provider, db = pool }) {
-  if (!state || !projectId || !provider) return null
+export async function consumeChannelOAuthState({ state, userId, projectId, provider, db = pool }) {
+  if (!state || !userId || !projectId || !provider) return null
   const { rows } = await db.query(
     `DELETE FROM channel_oauth_states
-     WHERE state_hash=$1 AND project_id=$2 AND provider=$3 AND expires_at>NOW()
+     WHERE state_hash=$1 AND user_id=$2 AND project_id=$3 AND provider=$4 AND expires_at>NOW()
      RETURNING user_id,project_id,provider,redirect_uri`,
-    [hash(state), projectId, provider]
+    [hash(state), userId, projectId, provider]
   )
   return rows[0] || null
 }
@@ -43,6 +43,21 @@ export async function revokeChannelConnection({ id, userId, projectId, db = pool
      WHERE id=$1 AND user_id=$2 AND project_id=$3 RETURNING *`,
     [id, userId, projectId]
   )
+  return rows[0] || null
+}
+
+export async function getChannelConnection({ id, userId, projectId, provider, db = pool }) {
+  const { rows } = await db.query(`SELECT id,user_id,project_id,provider,provider_account_id,status,scopes,capabilities,
+    last_verified_at,last_error_code,last_error_at,created_at,updated_at FROM channel_connections
+    WHERE id=$1 AND user_id=$2 AND project_id=$3 AND provider=$4`, [id,userId,projectId,provider])
+  return rows[0] || null
+}
+
+export async function updateChannelConnectionVerification({ id,userId,projectId,status='connected',capabilities={},errorCode=null,db=pool }) {
+  const { rows } = await db.query(`UPDATE channel_connections SET status=$1,capabilities=$2,last_verified_at=NOW(),
+    last_error_code=$3,last_error_at=CASE WHEN $3 IS NULL THEN NULL ELSE NOW() END,updated_at=NOW()
+    WHERE id=$4 AND user_id=$5 AND project_id=$6 RETURNING *`,
+  [status,JSON.stringify(capabilities),errorCode,id,userId,projectId])
   return rows[0] || null
 }
 
