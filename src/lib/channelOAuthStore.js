@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import { pool } from '../db.js'
+import { decryptToken, encryptToken } from './tokenCrypto.js'
 
 const hash = (value) => crypto.createHash('sha256').update(String(value)).digest('hex')
 
@@ -23,6 +24,34 @@ export async function consumeChannelOAuthState({ state, userId, projectId, provi
     [hash(state), userId, projectId, provider]
   )
   return rows[0] || null
+}
+
+export async function getOwnedOAuthStateContext({ state, userId, provider, db = pool }) {
+  if (!state || !userId || !provider) return null
+  const { rows } = await db.query(`SELECT project_id FROM channel_oauth_states
+    WHERE state_hash=$1 AND user_id=$2 AND provider=$3 AND expires_at>NOW()`, [hash(state),userId,provider])
+  return rows[0] || null
+}
+
+export async function upsertLiveChannelConnection({ userId, projectId, provider, externalAccountId, scopes, accessToken, expiresAt, db = pool }) {
+  const client = typeof db.connect === 'function' ? await db.connect() : db
+  try {
+    await client.query('BEGIN')
+    const { rows } = await client.query(`INSERT INTO channel_connections(id,user_id,project_id,provider,provider_account_id,status,scopes,capabilities,last_verified_at)
+      VALUES($1,$2,$3,$4,$5,'connected',$6,'{}'::jsonb,NOW()) ON CONFLICT(project_id,provider,provider_account_id)
+      DO UPDATE SET user_id=EXCLUDED.user_id,status='connected',scopes=EXCLUDED.scopes,last_verified_at=NOW(),last_error_code=NULL,last_error_at=NULL,updated_at=NOW() RETURNING *`,
+      [crypto.randomUUID(),userId,projectId,provider,externalAccountId,scopes])
+    await client.query(`INSERT INTO channel_connection_credentials(connection_id,encrypted_access_token,token_expires_at)
+      VALUES($1,$2,$3) ON CONFLICT(connection_id) DO UPDATE SET encrypted_access_token=EXCLUDED.encrypted_access_token,
+      token_expires_at=EXCLUDED.token_expires_at,updated_at=NOW()`, [rows[0].id,encryptToken(accessToken),expiresAt])
+    await client.query('COMMIT'); return rows[0]
+  } catch(error) { await client.query('ROLLBACK'); throw error } finally { if(client!==db) client.release() }
+}
+
+export async function getConnectionCredential({ connectionId, userId, projectId, db = pool }) {
+  const { rows } = await db.query(`SELECT c.encrypted_access_token,c.token_expires_at FROM channel_connection_credentials c
+    JOIN channel_connections x ON x.id=c.connection_id WHERE c.connection_id=$1 AND x.user_id=$2 AND x.project_id=$3`, [connectionId,userId,projectId])
+  return rows[0] ? { accessToken:decryptToken(rows[0].encrypted_access_token), expiresAt:rows[0].token_expires_at } : null
 }
 
 export async function upsertMockChannelConnection({ userId, projectId, provider, externalAccountId, scopes = [], db = pool }) {

@@ -11,9 +11,25 @@ import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
 import { logAudit } from '../lib/audit.js'
 import { PROVIDERS } from '../lib/oauthProviders.js'
+import { createChannelOAuthService } from '../lib/channelOAuthService.js'
+import { recordProjectActivity } from '../lib/projectActivity.js'
 
 const r = Router()
 const STATE_TTL_MS = 10 * 60 * 1000
+const channelOAuth = createChannelOAuthService()
+
+// Canonical Meta callback. The existing authenticated HttpOnly session binds
+// the provider redirect to the same Yeeyoo user that initiated the state.
+r.get('/meta/callback', auth, async (req,res) => {
+  const front=process.env.FRONTEND_URL || (process.env.NODE_ENV==='production'?null:'http://localhost:3000')
+  if(!front)return res.status(503).json({error:'FRONTEND_URL is not configured'})
+  const done=code=>res.redirect(`${front}/dashboard/connections?${code}`)
+  try{
+    const result=await channelOAuth.callbackFromProvider({userId:req.user.id,state:req.query.state,code:req.query.code,error:req.query.error})
+    await recordProjectActivity({userId:req.user.id,projectId:result.projectId,eventType:'meta_connection_completed',subjectType:'channel_connection',subjectId:result.connection.id,summary:'Meta connection completed',metadata:{provider:'meta'},dedupeKey:`meta:connected:${result.connection.id}`}).catch(()=>null)
+    return done('connected=meta')
+  }catch{return done('error=meta_connection_failed')}
+})
 
 // GET /:provider/start
 r.get('/:provider/start', auth, async (req, res) => {
