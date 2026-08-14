@@ -3,6 +3,7 @@ import { pool } from '../db.js'
 const decode = row => row && ({
   id: row.id, userId: row.user_id, projectId: row.project_id, kind: row.kind,
   provider: row.provider, model: row.model, status: row.status, input: row.input,
+  idempotencyKey: row.idempotency_key, usage: row.usage,
   retryCount: row.retry_count, maxRetries: row.max_retries, timeoutMs: row.timeout_ms,
   leaseOwner: row.lease_owner, leaseExpiresAt: row.lease_expires_at,
 })

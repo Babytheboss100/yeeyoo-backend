@@ -15,6 +15,7 @@ import { enforceProjectOwnership } from '../middleware/project.js'
 import { checkAILimit, logAIUsage } from '../middleware/aiLimit.js'
 import { beginDurableJob, durableResult } from '../jobs/jobCutover.js'
 import { transitionJob } from '../jobs/jobStore.js'
+import { recordCompletedJobUsage } from '../jobs/jobUsage.js'
 
 const r = Router()
 r.use(auth)
@@ -236,7 +237,9 @@ r.post('/chat', checkAILimit('tony_chat'), async (req, res) => {
 
     // 6) Logg AI-bruk (kostnadssporing + grensetelling)
     await logAIUsage({ userId: req.user.id, endpoint: 'tony_chat', tokensIn, tokensOut })
-    await transitionJob({ id: durable.id, userId: req.user.id, projectId, from: 'running', to: 'succeeded', ...durableResult('tony', { reply }, { tokensIn, tokensOut }) })
+    const completed = await transitionJob({ id: durable.id, userId: req.user.id, projectId, from: 'running', to: 'succeeded', ...durableResult('tony', { reply }, { tokensIn, tokensOut }) })
+    if (completed) await recordCompletedJobUsage({ job: completed, usage: { tokensIn, tokensOut } })
+      .catch(error => console.error('[ai-usage] Tony completion was not recorded:', error.code || error.name))
 
     res.json({ reply, conversationId: convoId, message_id: asstMsgId, jobId: durable.id })
   } catch (e) {

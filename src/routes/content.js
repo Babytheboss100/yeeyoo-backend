@@ -221,11 +221,17 @@ r.patch('/posts/:id', async (req, res) => {
 
 // Local/test workflow only. Provider adapters replace this without changing the route contract.
 r.post('/posts/:id/publish', async (req, res) => {
-  if (process.env.PUBLISH_ADAPTER && process.env.PUBLISH_ADAPTER !== 'mock-local') {
+  if (process.env.PUBLISH_ADAPTER !== 'mock-local') {
     return res.status(503).json({ error: 'Ingen sikker publiseringsadapter er konfigurert' })
   }
-  const result = await publishPost({ userId: req.user.id, postId: req.params.id, adapter: mockPublishingAdapter })
-  res.status(result.status).json(result.body)
+  try {
+    const result = await publishPost({ userId: req.user.id, postId: req.params.id,
+      projectId:req.body.projectId,campaignId:req.body.campaignId,artifactId:req.body.artifactId,
+      artifactVersion:Number(req.body.artifactVersion),idempotencyKey:req.get('Idempotency-Key'),adapter: mockPublishingAdapter })
+    res.status(result.status).json(result.body)
+  } catch {
+    res.status(500).json({error:'Mock execution could not be completed',code:'MOCK_EXECUTION_ERROR'})
+  }
 })
 
 // DELETE post

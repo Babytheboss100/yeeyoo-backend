@@ -106,8 +106,12 @@ export async function revokeSession({ accessToken, refreshToken }, client = pool
   const hashes = [accessToken, refreshToken].filter(Boolean).map(digest)
   if (!hashes.length) return
   await client.query(
-    `UPDATE auth_sessions SET revoked_at=COALESCE(revoked_at,NOW())
-      WHERE access_hash = ANY($1::text[]) OR refresh_hash = ANY($1::text[])`, [hashes]
+    `WITH matched_families AS (
+       SELECT family_id FROM auth_sessions
+       WHERE access_hash = ANY($1::text[]) OR refresh_hash = ANY($1::text[])
+     )
+     UPDATE auth_sessions SET revoked_at=COALESCE(revoked_at,NOW())
+     WHERE family_id IN (SELECT family_id FROM matched_families)`, [hashes]
   )
 }
 

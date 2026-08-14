@@ -7,6 +7,10 @@ export const TEST_TENANTS=Object.freeze({
   alpha:'00000000-0000-4000-8000-000000000001',
   beta:'00000000-0000-4000-8000-000000000002',
 })
+export const TEST_DEFAULT_PROJECTS=Object.freeze({
+  alpha:'10000000-0000-4000-8000-000000000001',
+  beta:'20000000-0000-4000-8000-000000000001',
+})
 const EXPECTED_DATABASE='yeeyoo_phase13_test'
 const safeEqual=(a,b)=>{const left=Buffer.from(String(a||''));const right=Buffer.from(String(b||''));return left.length===right.length&&crypto.timingSafeEqual(left,right)}
 const markerHash=tenant=>crypto.createHash('sha256').update(`phase15:test-session:${tenant}`).digest('hex')
@@ -39,6 +43,11 @@ export function createTestSessionRouter({db=pool,env=process.env,create=createSh
       if(identity.rows[0]?.name!==EXPECTED_DATABASE)throw Object.assign(new Error('Test database identity rejected'),{code:'IDENTITY_REJECTED'})
       const user=await client.query('SELECT id,name,email,is_admin FROM users WHERE id=$1 AND email=$2 FOR UPDATE',[userId,`${tenant==='alpha'?'alpha':'beta'}@yeeyoo.invalid`])
       if(!user.rows[0])throw Object.assign(new Error('Allowlisted test fixture missing'),{code:'FIXTURE_MISSING'})
+      const reset=await client.query(`UPDATE users u SET last_project_id=$2
+        WHERE u.id=$1 AND EXISTS (
+          SELECT 1 FROM projects p WHERE p.id=$2 AND p.user_id=u.id
+        ) RETURNING u.last_project_id`,[userId,TEST_DEFAULT_PROJECTS[tenant]])
+      if(reset.rowCount!==1)throw Object.assign(new Error('Deterministic test project missing'),{code:'FIXTURE_MISSING'})
       const claimed=await client.query(`INSERT INTO auth_exchange_codes(id,user_id,code_hash,expires_at,consumed_at)
         VALUES($1,$2,$3,NOW()+INTERVAL '2 minutes',NOW()) ON CONFLICT(code_hash) DO NOTHING RETURNING id`,[crypto.randomUUID(),userId,markerHash(tenant)])
       if(!claimed.rows[0])throw Object.assign(new Error('Test session bootstrap already used'),{code:'ALREADY_USED'})

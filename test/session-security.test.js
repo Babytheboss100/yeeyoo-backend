@@ -96,11 +96,13 @@ test('exchange codes are single-use and expired codes cannot create sessions', a
 })
 
 test('revocation hashes credentials and revoked/expired lookup is fail-closed', async () => {
-  let revokeParams
+  let revokeParams, revokeSql
   await revokeSession({ accessToken: 'access', refreshToken: 'refresh' }, {
-    query: async (_sql, params) => { revokeParams = params; return { rows: [] } },
+    query: async (sql, params) => { revokeSql = sql; revokeParams = params; return { rows: [] } },
   })
   assert.deepEqual(revokeParams[0], [sha256('access'), sha256('refresh')])
+  assert.match(revokeSql,/matched_families/)
+  assert.match(revokeSql,/family_id IN/)
 
   let lookupSql
   const found = await findSession('access', {

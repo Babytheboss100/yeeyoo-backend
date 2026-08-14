@@ -1,12 +1,13 @@
 import { JobError } from './jobModel.js'
 import { transitionJob } from './jobStore.js'
+import { recordCompletedJobUsage } from './jobUsage.js'
 
 const terminalResult = (result = {}) => ({
   artifacts: Array.isArray(result.artifacts) ? result.artifacts : [],
   usage: result.usage && typeof result.usage === 'object' ? result.usage : {},
 })
 
-export async function runJob({ job, provider, db, timeout = setTimeout, clear = clearTimeout }) {
+export async function runJob({ job, provider, db, timeout = setTimeout, clear = clearTimeout, usageRecorder }) {
   if (!job || job.status !== 'queued') throw new JobError('INVALID_JOB_STATE', 'Only queued jobs can run')
   if (!provider?.submit) throw new JobError('INVALID_PROVIDER', 'Job provider is invalid')
   const scope = { id: job.id, userId: job.userId, projectId: job.projectId, db }
@@ -17,7 +18,10 @@ export async function runJob({ job, provider, db, timeout = setTimeout, clear = 
     const expired = new Promise((_, reject) => { timer = timeout(() => reject(new JobError('PROVIDER_TIMEOUT', 'Provider timed out', { retryable: true })), job.timeoutMs) })
     const submitted = await Promise.race([provider.submit(running), expired])
     if (submitted?.state !== 'succeeded') throw new JobError('ASYNC_PROVIDER_RESULT', 'Provider result requires polling', { retryable: true })
-    return await transitionJob({ ...scope, from: 'running', to: 'succeeded', providerJobId: submitted.providerJobId, ...terminalResult(submitted.result) })
+    const completed = await transitionJob({ ...scope, from: 'running', to: 'succeeded', providerJobId: submitted.providerJobId, ...terminalResult(submitted.result) })
+    if (completed) await recordCompletedJobUsage({ job: completed, usage: submitted.result?.usage, recorder: usageRecorder, db })
+      .catch(error => console.error('[ai-usage] job completion was not recorded:', error.code || error.name))
+    return completed
   } catch (error) {
     return await transitionJob({ ...scope, from: 'running', to: 'failed', error })
   } finally {

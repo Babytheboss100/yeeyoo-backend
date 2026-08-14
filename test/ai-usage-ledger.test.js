@@ -1,0 +1,10 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { calculateModelCost, loadPricingTable } from '../src/lib/aiPricing.js'
+import { checkCostAllowance, getAIUsageSummary, recordAIUsage } from '../src/services/aiUsageLedger.js'
+const pricing={version:'test',models:{'mock/tiny':{inputPerMillion:1,outputPerMillion:2,cachedInputPerMillion:0}}}
+test('pricing is configurable and production defaults fail closed',()=>{assert.equal(calculateModelCost({provider:'mock',model:'tiny',inputTokens:100,outputTokens:50,table:pricing}).costUsd,.0002);assert.throws(()=>loadPricingTable({}),{code:'AI_PRICING_NOT_CONFIGURED'})})
+test('ledger persists full scope with constraint idempotency',async()=>{let c;const db={async query(sql,values){c={sql,values};return{rows:[{cost_usd:values[19]}]}}};const {row}=await recordAIUsage({userId:'u',projectId:'p',campaignId:'c',planId:'plan',planStepId:'step',specialist:'copy',operation:'draft',provider:'mock',model:'tiny',idempotencyKey:'same',attempt:2,inputTokens:100,outputTokens:50},{db,pricingTable:pricing});assert.equal(row.cost_usd,.0002);assert.match(c.sql,/ON CONFLICT ON CONSTRAINT ai_usage_ledger_attempt_unique/);assert.deepEqual(c.values.slice(1,6),['u','p','c','plan','step'])})
+test('non-billable offline event is truthfully zero cost',async()=>{const db={async query(_s,v){return{rows:[{cost_usd:v[19],cost_source:v[22]}]}}};const{row}=await recordAIUsage({userId:'u',operation:'fixture',provider:'local',model:'unknown',idempotencyKey:'k',billable:false},{db});assert.deepEqual(row,{cost_usd:0,cost_source:'non_billable'})})
+test('summary is tenant and project scoped',async()=>{let values;const db={async query(_s,v){values=v;return{rows:[]}}};await getAIUsageSummary({userId:'u',projectId:'p'},{db});assert.deepEqual(values,['u','p'])})
+test('allowance rejects projected overspend',async()=>{const db={async query(){return{rows:[{period:'month',ceiling_usd:'10',used_usd:'9.9'}]}}};assert.equal((await checkCostAllowance({userId:'u',projectId:'p',estimatedCostUsd:.2},{db})).allowed,false)})

@@ -21,8 +21,8 @@ function publishingDb(initialPost) {
         state.transactions.push(normalized)
         return { rows: [] }
       }
-      if (normalized.startsWith('SELECT * FROM posts')) {
-        return { rows: state.post.id === params[0] && state.post.user_id === params[1] ? [{ ...state.post }] : [] }
+      if (normalized.startsWith('SELECT p.*, EXISTS(')) {
+        return { rows: state.post.id === params[0] && state.post.user_id === params[1] ? [{ ...state.post, approval_current: true }] : [] }
       }
       if (normalized.startsWith('SELECT * FROM publish_attempts')) {
         return { rows: state.attempt?.idempotency_key === params[0] ? [{ ...state.attempt }] : [] }
@@ -30,6 +30,9 @@ function publishingDb(initialPost) {
       if (normalized.startsWith('INSERT INTO publish_attempts')) {
         state.attempt = { id: params[0], user_id: params[1], project_id: params[2], post_id: params[3], adapter: params[4], idempotency_key: params[5], status: 'running' }
         return { rows: [] }
+      }
+      if (normalized.startsWith('INSERT INTO project_activity') || normalized.startsWith('INSERT INTO marketing_performance_events')) {
+        return { rows: [{}] }
       }
       if (normalized.startsWith("UPDATE posts SET status='published'")) {
         state.post = { ...state.post, status: 'published', published_at: params[0] }
@@ -65,13 +68,14 @@ function publishingDb(initialPost) {
 }
 
 test('approved post completes publish transaction and idempotently bumps streak once', async () => {
-  const { db, state } = publishingDb({ id: 'post-1', user_id: 'user-1', project_id: 'project-1', status: 'approved' })
+  const scope = { projectId: 'project-1', campaignId: 'campaign-1', artifactId: 'artifact-1', artifactVersion: 1, idempotencyKey: 'publish-post-1' }
+  const { db, state } = publishingDb({ id: 'post-1', user_id: 'user-1', project_id: scope.projectId, campaign_id: scope.campaignId, artifact_id: scope.artifactId, artifact_version: scope.artifactVersion, status: 'approved' })
   let providerCalls = 0
   const adapter = { id: 'local-test', publish: async () => { providerCalls += 1; return { externalId: 'local-1' } } }
   const occurredAt = new Date('2026-08-12T10:00:00Z')
 
-  const first = await publishPost({ userId: 'user-1', postId: 'post-1', adapter, db, now: occurredAt })
-  const second = await publishPost({ userId: 'user-1', postId: 'post-1', adapter, db, now: occurredAt })
+  const first = await publishPost({ userId: 'user-1', postId: 'post-1', ...scope, adapter, db, now: occurredAt })
+  const second = await publishPost({ userId: 'user-1', postId: 'post-1', ...scope, adapter, db, now: occurredAt })
 
   assert.equal(first.status, 200)
   assert.equal(first.body.idempotent, false)
@@ -84,10 +88,11 @@ test('approved post completes publish transaction and idempotently bumps streak 
 })
 
 test('failed publish commits a retryable failure without bumping streak', async () => {
-  const { db, state } = publishingDb({ id: 'post-2', user_id: 'user-1', project_id: 'project-1', status: 'approved' })
+  const scope = { projectId: 'project-1', campaignId: 'campaign-1', artifactId: 'artifact-1', artifactVersion: 1, idempotencyKey: 'publish-post-2' }
+  const { db, state } = publishingDb({ id: 'post-2', user_id: 'user-1', project_id: scope.projectId, campaign_id: scope.campaignId, artifact_id: scope.artifactId, artifact_version: scope.artifactVersion, status: 'approved' })
   const adapter = { id: 'local-test', publish: async () => { throw new Error('provider unavailable') } }
 
-  const result = await publishPost({ userId: 'user-1', postId: 'post-2', adapter, db })
+  const result = await publishPost({ userId: 'user-1', postId: 'post-2', ...scope, adapter, db })
 
   assert.equal(result.status, 502)
   assert.equal(result.body.code, 'PUBLISH_FAILED')

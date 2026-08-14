@@ -7,14 +7,15 @@ export function artifactToPostDraft(artifact, { scheduledAt = null } = {}) {
   const content = artifact.content?.socialCopy || artifact.content?.adCopy?.primaryText || artifact.content?.email?.body || artifact.content?.subheadline || artifact.content?.headline
   if (!String(content || '').trim()) throw Object.assign(new Error('Artifact has no publishable content'), { code: 'EMPTY_ARTIFACT' })
   const platform = PLATFORM_BY_CHANNEL[artifact.channel] || artifact.channel || 'website'
-  return { userId: artifact.userId, projectId: artifact.projectId, artifactId: artifact.id, artifactVersion: artifact.artifactVersion, platform, content: String(content).trim(), scheduledAt, status: scheduledAt ? 'scheduled' : 'approved' }
+  return { userId: artifact.userId, projectId: artifact.projectId, campaignId: artifact.campaignId || null, artifactId: artifact.id, artifactVersion: artifact.artifactVersion, platform, content: String(content).trim(), scheduledAt, status: scheduledAt ? 'scheduled' : 'approved' }
 }
 
 export async function enqueueArtifact({ artifact, scheduledAt, db = pool }) {
   const draft = artifactToPostDraft(artifact, { scheduledAt })
-  const { rows } = await db.query(`INSERT INTO posts (id,user_id,project_id,platform,content,status,scheduled_at,artifact_id,artifact_version)
-    VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8)
-    ON CONFLICT (user_id,project_id,artifact_id,artifact_version) DO UPDATE SET id=posts.id RETURNING *`,
-    [draft.userId,draft.projectId,draft.platform,draft.content,draft.status,draft.scheduledAt,draft.artifactId,draft.artifactVersion])
+  const { rows } = await db.query(`INSERT INTO posts (id,user_id,project_id,campaign_id,platform,content,status,scheduled_at,artifact_id,artifact_version)
+    VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9)
+    ON CONFLICT (user_id,project_id,artifact_id,artifact_version) WHERE artifact_id IS NOT NULL
+    DO UPDATE SET campaign_id=EXCLUDED.campaign_id RETURNING *`,
+    [draft.userId,draft.projectId,draft.campaignId,draft.platform,draft.content,draft.status,draft.scheduledAt,draft.artifactId,draft.artifactVersion])
   return rows[0]
 }

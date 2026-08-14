@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { artifactToPostDraft, enqueueArtifact } from '../src/marketing/artifactWorkflow.js'
 import { createArtifactRecord } from '../src/marketing/artifacts.js'
 
-const approved = {id:'a1',rootId:'a1',userId:'u1',projectId:'p1',artifactVersion:2,status:'approved',channel:'linkedin',content:{socialCopy:'Ship useful work.'}}
+const approved = {id:'a1',rootId:'a1',userId:'u1',projectId:'p1',campaignId:'c1',artifactVersion:2,status:'approved',channel:'linkedin',content:{socialCopy:'Ship useful work.'}}
 
 test('only approved artifacts can enter Planner or Queue', () => {
   assert.throws(()=>artifactToPostDraft({...approved,status:'draft'}),error=>error.code==='ARTIFACT_NOT_APPROVED')
@@ -12,7 +12,7 @@ test('only approved artifacts can enter Planner or Queue', () => {
 
 test('scheduled artifact maps to canonical scheduled post', () => {
   const post=artifactToPostDraft(approved,{scheduledAt:'2026-09-01T10:00:00Z'})
-  assert.equal(post.status,'scheduled'); assert.equal(post.platform,'linkedin'); assert.equal(post.artifactVersion,2)
+  assert.equal(post.status,'scheduled'); assert.equal(post.platform,'linkedin'); assert.equal(post.artifactVersion,2); assert.equal(post.campaignId,'c1')
 })
 
 test('artifact record initializes an immutable version root', () => {
@@ -24,6 +24,8 @@ test('enqueue uses a tenant-and-version idempotency conflict key', async () => {
   const calls=[]; const db={query:async(sql,params)=>{calls.push({sql,params});return{rows:[{id:'post1'}]}}}
   const first=await enqueueArtifact({artifact:approved,db}); const second=await enqueueArtifact({artifact:approved,db})
   assert.equal(first.id,second.id); assert.match(calls[0].sql,/ON CONFLICT \(user_id,project_id,artifact_id,artifact_version\)/)
+  assert.match(calls[0].sql,/campaign_id=EXCLUDED\.campaign_id/)
+  assert.equal(calls[0].params[2],'c1')
   assert.deepEqual(calls[0].params.slice(-2),['a1',2])
 })
 

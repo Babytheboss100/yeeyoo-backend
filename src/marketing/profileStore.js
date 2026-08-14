@@ -5,7 +5,15 @@ import { createMarketingProfile, profileFromLegacyBusiness } from './profile.js'
 export async function getMarketingProfile({ userId, projectId, db = pool }) {
   const { rows } = await db.query('SELECT profile FROM project_marketing_profiles WHERE project_id=$1 AND user_id=$2', [projectId, userId])
   if (rows[0]) return typeof rows[0].profile === 'string' ? JSON.parse(rows[0].profile) : rows[0].profile
-  const legacy = await db.query('SELECT * FROM businesses WHERE project_id=$1 AND user_id=$2 ORDER BY updated_at DESC NULLS LAST, created_at DESC LIMIT 1', [projectId, userId])
+  let legacy
+  try {
+    legacy = await db.query('SELECT * FROM businesses WHERE project_id=$1 AND user_id=$2 ORDER BY updated_at DESC NULLS LAST, created_at DESC LIMIT 1', [projectId, userId])
+  } catch (error) {
+    // Older installations have user-owned businesses without project_id. Never
+    // fall back to a user-wide row because that could leak context across projects.
+    if (error?.code !== '42703') throw error
+    return createMarketingProfile({ projectId })
+  }
   return legacy.rows[0] ? profileFromLegacyBusiness({ projectId, business: legacy.rows[0] }) : createMarketingProfile({ projectId })
 }
 

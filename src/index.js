@@ -52,6 +52,7 @@ import channelOAuthRoutes from './routes/channel-oauth.js'
 import approvalRoutes from './routes/approvals.js'
 import activityRoutes from './routes/activity.js'
 import reportingRoutes from './routes/reporting.js'
+import aiUsageRoutes from './routes/ai-usage.js'
 import jobRoutes from './routes/jobs.js'
 import testSessionRoutes from './routes/test-session.js'
 import { auth } from './middleware/auth.js'
@@ -128,6 +129,7 @@ app.use('/api/channel-oauth', channelOAuthRoutes)
 app.use('/api/approvals', approvalRoutes)
 app.use('/api/activity', activityRoutes)
 app.use('/api/reporting', reportingRoutes)
+app.use('/api/ai-usage', aiUsageRoutes)
 app.use('/api/jobs', jobRoutes)
 app.use('/api/content', contentRoutes)
 app.use('/api/billing', billingRoutes)

@@ -17,6 +17,9 @@ const ALLOWED_ORIGINS = [
 if (process.env.NODE_ENV !== 'production') {
   ALLOWED_ORIGINS.push('http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:3000')
 }
+if (process.env.NODE_ENV === 'test' && process.env.YEEYOO_STRICT_TEST_DB === 'true' && process.env.YEEYOO_ENABLE_TEST_SESSION === 'true') {
+  ALLOWED_ORIGINS.push('http://127.0.0.1:3100')
+}
 try {
   const configuredFrontend = new URL(String(process.env.FRONTEND_URL || ''))
   if (['http:', 'https:'].includes(configuredFrontend.protocol) && !configuredFrontend.username && !configuredFrontend.password) {
@@ -29,7 +32,10 @@ export const corsOptions = {
     // Allow requests with no origin (mobile apps, curl, server-to-server)
     if (!origin) return callback(null, true)
     if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true)
-    callback(new Error(`CORS-blokkert: ${origin} er ikke tillatt`))
+    const error = new Error('Request origin is not allowed')
+    error.status = 403
+    error.code = 'ORIGIN_NOT_ALLOWED'
+    callback(error)
   },
   credentials: true
 }
