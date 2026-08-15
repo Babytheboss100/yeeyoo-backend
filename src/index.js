@@ -55,6 +55,7 @@ import reportingRoutes from './routes/reporting.js'
 import aiUsageRoutes from './routes/ai-usage.js'
 import sosyRoutes from './routes/sosy.js'
 import socialEngagementRoutes from './routes/social-engagement.js'
+import voiceAgentRoutes from './routes/voice-agent.js'
 import jobRoutes from './routes/jobs.js'
 import testSessionRoutes from './routes/test-session.js'
 import { auth } from './middleware/auth.js'
@@ -110,6 +111,7 @@ app.use('/api/autopilot/generate', aiLimiter)
 app.use('/api/smartplan/analyse', aiLimiter)
 app.use('/api/tony/chat', aiLimiter)
 app.use('/api/brand-dna/analyze', aiLimiter)
+app.use('/api/voice/turn', aiLimiter)
 
 // ─── Admin middleware ────────────────────────────────────────────────────────
 async function requireAdmin(req, res, next) {
@@ -134,6 +136,7 @@ app.use('/api/reporting', reportingRoutes)
 app.use('/api/ai-usage', aiUsageRoutes)
 app.use('/api/sosy', sosyRoutes)
 app.use('/api/social-engagement', socialEngagementRoutes)
+app.use('/api/voice', voiceAgentRoutes)
 app.use('/api/jobs', jobRoutes)
 app.use('/api/content', contentRoutes)
 app.use('/api/billing', billingRoutes)
