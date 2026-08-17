@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import express, { Router } from 'express'
 import { auth } from '../middleware/auth.js'
 import { requireProject, sendProjectError } from '../middleware/project.js'
 import { executeCanonicalVoiceAgentTurn } from '../voice/agentOrchestrator.js'
@@ -7,11 +7,48 @@ import { pool } from '../db.js'
 import { recordProjectActivity } from '../lib/projectActivity.js'
 import { saveSosyDelegation, updateSosyDelegation } from '../sosy/store.js'
 import { saveArtifact } from '../marketing/artifacts.js'
-import { createDeterministicVoiceAdapters } from '../voice/adapters.js'
+import { createDeterministicVoiceAdapters, createSpeechToTextAdapter } from '../voice/adapters.js'
 import { recordVoiceUsage } from '../voice/cost.js'
+import { withEphemeralAudio } from '../voice/audioLifecycle.js'
 
 const r = Router()
 r.use(auth)
+
+const audioTypes = ['audio/webm', 'audio/ogg', 'audio/mp4']
+// Typed transcription failures the client may see. Anything unlisted collapses
+// to a generic message so provider internals and keys can never reach a body.
+const transcribeStatus = {
+  VOICE_STT_NOT_CONFIGURED: 503, VOICE_STT_PROVIDER_FAILED: 502, VOICE_STT_TIMEOUT: 504, VOICE_CANCELLED: 499,
+  VOICE_AUDIO_EMPTY: 400, VOICE_AUDIO_DURATION_INVALID: 400, VOICE_AUDIO_TOO_LONG: 413, VOICE_AUDIO_TOO_LARGE: 413,
+  VOICE_NO_SPEECH: 422, VOICE_TRANSCRIPT_TOO_LARGE: 413, VOICE_LANGUAGE_UNSUPPORTED: 400, VOICE_TRANSCRIBE_REPLAY: 409,
+}
+r.post('/transcribe', express.raw({ type: audioTypes, limit: '8mb' }), async (req, res) => {
+  try {
+    const project = await requireProject(req, req.query.projectId)
+    const mimeType = String(req.get('content-type') || '').split(';')[0].toLowerCase()
+    if (!audioTypes.includes(mimeType)) return res.status(415).json({ error: 'Recorded audio format is not supported', code: 'VOICE_AUDIO_FORMAT_UNSUPPORTED' })
+    if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: 'Recorded audio is empty', code: 'VOICE_AUDIO_EMPTY' })
+    const durationSeconds = Number(req.query.durationSeconds || 0)
+    if (!Number.isFinite(durationSeconds) || durationSeconds < 0) return res.status(400).json({ error: 'Recorded audio duration is invalid', code: 'VOICE_AUDIO_DURATION_INVALID' })
+    const requestKey = String(req.get('Idempotency-Key') || '').trim()
+    if (!requestKey) return res.status(400).json({ error: 'Voice turn identity is required', code: 'VOICE_TURN_ID_REQUIRED' })
+    // Replay guard before the provider is touched: a repeated key must not pay
+    // twice. Transcripts are never stored, so a replay cannot be re-served.
+    const replay = await pool.query(`SELECT 1 FROM ai_usage_ledger WHERE user_id=$1 AND project_id=$2 AND operation='voice.stt' AND idempotency_key=$3 LIMIT 1`, [req.user.id, project.id, `${requestKey}:stt`])
+    if (replay.rows[0]) throw Object.assign(new Error('Voice transcription was already processed'), { code: 'VOICE_TRANSCRIBE_REPLAY' })
+    const stt = createSpeechToTextAdapter()
+    // req.body is the only copy of the recording; withEphemeralAudio zeroes it
+    // in a finally on success, error, timeout and abort alike.
+    const result = await withEphemeralAudio(req.body, audio => stt.transcribe({ audio, mimeType, languageHint: req.query.language || 'AUTO', durationSeconds }))
+    await recordVoiceUsage({ turn: { id: requestKey, sessionId: requestKey, userId: req.user.id, projectId: project.id, agent: ['tony', 'sosy'].includes(req.query.agent) ? req.query.agent : 'tony' }, stage: 'stt', idempotencyKey: `${requestKey}:stt`, usage: { audioSeconds: result.usage.audioSeconds, provider: result.provider, model: result.model } })
+    // Vendor identity stays server side: only the ledger sees provider/model.
+    res.set('Cache-Control', 'no-store').json({ transcript: result.transcript, language: result.detectedLanguage, confidence: result.confidence, requiresLanguageClarification: !result.detectedLanguage, durationSeconds: result.durationSeconds, ephemeral: true })
+  } catch (error) {
+    if (sendProjectError(res, error)) return
+    const status = transcribeStatus[error.code]
+    res.status(status || 500).json({ error: status ? error.message : 'Speech transcription failed', code: status ? error.code : 'VOICE_STT_FAILED' })
+  }
+})
 
 // Intended mount: /api/voice. Audio/STT/TTS adapters normalize into this
 // canonical turn; this route never receives provider authority from audio.
@@ -19,8 +56,8 @@ r.post('/turn', async (req, res) => {
   let client
   try {
     const body = req.body || {}
-    if (!['fixture', 'browser-speech'].includes(body.inputMode)) {
-      return res.status(400).json({ error: 'Voice inputMode must be fixture or browser-speech', code: 'VOICE_INPUT_MODE_INVALID' })
+    if (!['fixture', 'browser-speech', 'media-recorder'].includes(body.inputMode)) {
+      return res.status(400).json({ error: 'Voice inputMode is invalid', code: 'VOICE_INPUT_MODE_INVALID' })
     }
     const project = await requireProject(req, body.projectId)
     client = await pool.connect()

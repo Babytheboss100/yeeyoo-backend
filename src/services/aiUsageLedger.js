@@ -23,16 +23,16 @@ export async function recordAIUsage(input, { db = pool, pricingTable } = {}) {
   if (!STATUS.has(status)) throw new TypeError('Invalid AI usage status')
   const inputTokens = Number(input.inputTokens ?? 0), outputTokens = Number(input.outputTokens ?? 0), cachedInputTokens = Number(input.cachedInputTokens ?? 0)
   const billable = input.billable ?? status === 'succeeded'
+  const mediaUnits = Number(input.mediaUnits ?? 0)
+  if (!Number.isFinite(mediaUnits) || mediaUnits < 0) throw new TypeError('mediaUnits must be non-negative')
   const calculated = billable
-    ? calculateModelCost({ provider, model, inputTokens, outputTokens, cachedInputTokens, table: pricingTable })
+    ? calculateModelCost({ provider, model, inputTokens, outputTokens, cachedInputTokens, mediaUnits, mediaUnitType: input.mediaUnitType || null, table: pricingTable })
     : { costUsd: 0, pricingVersion: 'non-billable-v1' }
   const providerCost = input.providerCostUsd == null ? null : Number(input.providerCostUsd)
   if (providerCost != null && (!Number.isFinite(providerCost) || providerCost < 0)) throw new TypeError('providerCostUsd must be non-negative')
   const finalCost = billable ? (providerCost ?? calculated.costUsd) : 0
   const costSource = !billable ? 'non_billable' : providerCost == null ? 'estimated' : 'provider_reported'
-  const mediaUnits = Number(input.mediaUnits ?? 0)
-  if (!Number.isFinite(mediaUnits) || mediaUnits < 0) throw new TypeError('mediaUnits must be non-negative')
-  const values = [crypto.randomUUID(), userId, input.projectId || null, input.campaignId || null, input.planId || null,
+  const values =[crypto.randomUUID(), userId, input.projectId || null, input.campaignId || null, input.planId || null,
     input.planStepId || null, input.jobId || null, input.specialist || null, operation, provider, model, idempotencyKey,
     attempt, status, inputTokens, outputTokens, cachedInputTokens, mediaUnits, input.mediaUnitType || null, finalCost,
     calculated.costUsd, providerCost, costSource, Boolean(billable), input.retryOf || null, calculated.pricingVersion,

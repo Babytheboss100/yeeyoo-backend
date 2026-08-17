@@ -79,7 +79,7 @@ test('route binds auth and canonical owned project before orchestration', () => 
   assert.match(source, /recordProjectActivity/)
   assert.match(source, /pg_advisory_xact_lock/)
   assert.match(source, /VOICE_TURN_REPLAY/)
-  assert.match(source, /\['fixture', 'browser-speech'\]\.includes\(body\.inputMode\)/)
+  assert.match(source, /\['fixture', 'browser-speech', 'media-recorder'\]\.includes\(body\.inputMode\)/)
   assert.match(source, /res\.status\(200\)\.json/)
   assert.doesNotMatch(source, /needs_clarification' \? 422/)
   assert.match(source, /tony_execution_plans WHERE id=\$1 AND user_id=\$2 AND project_id=\$3/)

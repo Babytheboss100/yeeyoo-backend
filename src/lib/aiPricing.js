@@ -31,6 +31,8 @@ export function loadPricingTable(env = process.env) {
     finiteNonNegative(rate.inputPerMillion, 'inputPerMillion')
     finiteNonNegative(rate.outputPerMillion, 'outputPerMillion')
     finiteNonNegative(rate.cachedInputPerMillion, 'cachedInputPerMillion')
+    if (rate.perAudioSecond != null) finiteNonNegative(rate.perAudioSecond, 'perAudioSecond')
+    if (rate.perMillionCharacters != null) finiteNonNegative(rate.perMillionCharacters, 'perMillionCharacters')
   }
   return parsed
 }
@@ -42,12 +44,23 @@ export function lookupModelPrice({ provider, model, table = loadPricingTable() }
   return { key, version: table.version, ...rate }
 }
 
-export function calculateModelCost({ provider, model, inputTokens = 0, outputTokens = 0, cachedInputTokens = 0, table }) {
+// Media-priced work (speech in, speech out) is billed per audio second or per
+// character rather than per token; token rates stay authoritative for text.
+function mediaCost(price, mediaUnits, mediaUnitType) {
+  if (!mediaUnits) return 0
+  if (mediaUnitType === 'audio_seconds') return mediaUnits * Number(price.perAudioSecond ?? 0)
+  if (mediaUnitType === 'characters') return (mediaUnits * Number(price.perMillionCharacters ?? 0)) / MILLION
+  return 0
+}
+
+export function calculateModelCost({ provider, model, inputTokens = 0, outputTokens = 0, cachedInputTokens = 0, mediaUnits = 0, mediaUnitType = null, table }) {
   const input = finiteNonNegative(inputTokens, 'inputTokens')
   const output = finiteNonNegative(outputTokens, 'outputTokens')
   const cached = finiteNonNegative(cachedInputTokens, 'cachedInputTokens')
   if (![input, output, cached].every(Number.isInteger)) throw new TypeError('Token counts must be integers')
+  const media = finiteNonNegative(mediaUnits, 'mediaUnits')
   const price = lookupModelPrice({ provider, model, table })
-  const costUsd = ((input * price.inputPerMillion) + (output * price.outputPerMillion) + (cached * price.cachedInputPerMillion)) / MILLION
+  const tokenCost = ((input * price.inputPerMillion) + (output * price.outputPerMillion) + (cached * price.cachedInputPerMillion)) / MILLION
+  const costUsd = tokenCost + mediaCost(price, media, mediaUnitType)
   return { costUsd: Number(costUsd.toFixed(8)), pricingVersion: price.version, priceKey: price.key }
 }
