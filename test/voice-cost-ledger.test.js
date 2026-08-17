@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { DETERMINISTIC_VOICE_PROVIDER, VOICE_MEDIA_PRICING, recordVoiceUsage, voicePricingTable } from '../src/voice/cost.js'
+import { DETERMINISTIC_VOICE_PROVIDER, VOICE_MEDIA_PRICING, estimateVoiceCostUsd, recordVoiceUsage, voicePricingTable } from '../src/voice/cost.js'
 import { calculateModelCost } from '../src/lib/aiPricing.js'
+import { DEFAULT_VOICE_LIMITS, enforceVoiceCostLimits } from '../src/voice/domain.js'
 
 // Offline ledger stub: captures the canonical INSERT parameters so we can assert
 // the exact row shape without touching any database.
@@ -87,4 +88,29 @@ test('media pricing is additive and leaves token-priced models untouched', () =>
 test('invalid voice cost stages fail closed', async () => {
   const { db } = ledgerStub()
   await assert.rejects(recordVoiceUsage({ turn, stage: 'publish', idempotencyKey: 'x' }, { db, env }), error => error.code === 'VOICE_COST_STAGE_INVALID')
+})
+
+test('pre-flight estimate matches what is later billed and fails closed when unpriced', () => {
+  const usage = { characters: 200, provider: 'openai', model: 'gpt-4o-mini-tts' }
+  assert.equal(estimateVoiceCostUsd({ stage: 'tts', usage, env }), 0.003)
+  assert.equal(estimateVoiceCostUsd({ stage: 'stt', usage: { audioSeconds: 60, provider: 'openai', model: 'gpt-4o-mini-transcribe' }, env }), 0.003)
+  // Fixtures are free by construction, so they never consult a rate card.
+  assert.equal(estimateVoiceCostUsd({ stage: 'tts', usage: { characters: 5000 }, env }), 0)
+  assert.throws(() => estimateVoiceCostUsd({ stage: 'tts', usage: { characters: 10, provider: 'openai', model: 'some-unlisted-model' }, env }), error => error.code === 'VOICE_COST_UNPRICED')
+})
+
+test('an oversized reply is refused by the per-turn ceiling before the provider is called', () => {
+  const characters = 8000
+  const estimate = estimateVoiceCostUsd({ stage: 'tts', usage: { characters, provider: 'openai', model: 'gpt-4o-mini-tts' }, env })
+  assert.ok(estimate < DEFAULT_VOICE_LIMITS.maxCostPerTurnUsd, 'a maximum-length reply must stay inside the per-turn ceiling')
+  assert.throws(() => enforceVoiceCostLimits({ turnCostUsd: DEFAULT_VOICE_LIMITS.maxCostPerTurnUsd + 0.01 }), error => error.code === 'VOICE_TURN_COST_CEILING_EXCEEDED')
+})
+
+test('browser-speech transcription is attributed truthfully and stays free', async () => {
+  const { rows, db } = ledgerStub()
+  await recordVoiceUsage({ turn, stage: 'stt', idempotencyKey: 'browser:stt', billable: false, usage: { audioSeconds: 5, provider: 'browser-speech', model: 'web-speech-api' } }, { db, env })
+  assert.equal(rows[0].provider, 'browser-speech')
+  assert.equal(rows[0].billable, false)
+  assert.equal(Number(rows[0].cost_usd), 0)
+  assert.equal(rows[0].cost_source, 'non_billable')
 })

@@ -113,6 +113,7 @@ app.use('/api/tony/chat', aiLimiter)
 app.use('/api/brand-dna/analyze', aiLimiter)
 app.use('/api/voice/turn', aiLimiter)
 app.use('/api/voice/transcribe', aiLimiter)
+app.use('/api/voice/speak', aiLimiter)
 
 // ─── Admin middleware ────────────────────────────────────────────────────────
 async function requireAdmin(req, res, next) {

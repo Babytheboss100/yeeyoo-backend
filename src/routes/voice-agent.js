@@ -7,9 +7,10 @@ import { pool } from '../db.js'
 import { recordProjectActivity } from '../lib/projectActivity.js'
 import { saveSosyDelegation, updateSosyDelegation } from '../sosy/store.js'
 import { saveArtifact } from '../marketing/artifacts.js'
-import { createDeterministicVoiceAdapters, createSpeechToTextAdapter } from '../voice/adapters.js'
-import { recordVoiceUsage } from '../voice/cost.js'
-import { withEphemeralAudio } from '../voice/audioLifecycle.js'
+import { createDeterministicVoiceAdapters, createSpeechToTextAdapter, createTextToSpeechAdapter } from '../voice/adapters.js'
+import { estimateVoiceCostUsd, recordVoiceUsage } from '../voice/cost.js'
+import { releaseSynthesizedAudio, withEphemeralAudio } from '../voice/audioLifecycle.js'
+import { enforceVoiceCostLimits } from '../voice/domain.js'
 
 const r = Router()
 r.use(auth)
@@ -47,6 +48,46 @@ r.post('/transcribe', express.raw({ type: audioTypes, limit: '8mb' }), async (re
     if (sendProjectError(res, error)) return
     const status = transcribeStatus[error.code]
     res.status(status || 500).json({ error: status ? error.message : 'Speech transcription failed', code: status ? error.code : 'VOICE_STT_FAILED' })
+  }
+})
+
+const speakStatus = {
+  VOICE_TTS_NOT_CONFIGURED: 503, VOICE_TTS_PROVIDER_FAILED: 502, VOICE_TTS_TIMEOUT: 504, VOICE_CANCELLED: 499,
+  VOICE_TTS_EMPTY: 400, VOICE_TTS_TOO_LARGE: 413, VOICE_TTS_NO_AUDIO: 502, VOICE_TTS_FORMAT_UNSUPPORTED: 400,
+  VOICE_TTS_IDENTITY_UNSUPPORTED: 400, VOICE_LANGUAGE_UNSUPPORTED: 400, VOICE_SPEAK_REPLAY: 409,
+  VOICE_TURN_COST_CEILING_EXCEEDED: 402, VOICE_SESSION_COST_CEILING_EXCEEDED: 402, VOICE_COST_UNPRICED: 503,
+}
+// Synthesized speech is streamed straight back to the caller and never stored:
+// no file, no row, no URL that could outlive the response. The client turns the
+// body into a blob URL and revokes it after playback.
+r.post('/speak', async (req, res) => {
+  let speech
+  try {
+    const body = req.body || {}
+    const project = await requireProject(req, body.projectId || req.query.projectId)
+    const requestKey = String(req.get('Idempotency-Key') || '').trim()
+    if (!requestKey) return res.status(400).json({ error: 'Voice turn identity is required', code: 'VOICE_TURN_ID_REQUIRED' })
+    const replay = await pool.query(`SELECT 1 FROM ai_usage_ledger WHERE user_id=$1 AND project_id=$2 AND operation='voice.tts' AND idempotency_key=$3 LIMIT 1`, [req.user.id, project.id, `${requestKey}:tts`])
+    if (replay.rows[0]) throw Object.assign(new Error('Voice synthesis was already processed'), { code: 'VOICE_SPEAK_REPLAY' })
+    const text = String(body.text || '').trim()
+    if (!text) throw Object.assign(new Error('Text-to-speech requires text'), { code: 'VOICE_TTS_EMPTY' })
+    const tts = createTextToSpeechAdapter()
+    // Refuse anything over the canonical per-turn ceiling before the provider
+    // is called, so a runaway reply can never be billed at all.
+    enforceVoiceCostLimits({ turnCostUsd: estimateVoiceCostUsd({ stage: 'tts', usage: { characters: text.length, provider: tts.provider, model: tts.model } }) })
+    const agent = body.agent === 'sosy' ? 'sosy' : 'tony'
+    speech = await tts.synthesize({ text, language: body.language, voiceIdentity: agent === 'sosy' ? 'sosy-standard' : 'tony-standard', audioFormat: body.audioFormat || 'mp3' })
+    await recordVoiceUsage({ turn: { id: requestKey, sessionId: requestKey, userId: req.user.id, projectId: project.id, agent }, stage: 'tts', idempotencyKey: `${requestKey}:tts`, usage: { characters: speech.usage.characters, provider: speech.provider, model: speech.model } })
+    // Zero the bytes once the socket has drained and not a moment earlier:
+    // releasing before the write completes would blank the outgoing body.
+    // 'close' fires on both a completed response and a client disconnect.
+    res.once('close', () => releaseSynthesizedAudio(speech))
+    res.status(200).set({ 'Content-Type': speech.audio.mimeType, 'Content-Length': String(speech.audio.byteLength), 'Cache-Control': 'no-store', 'X-Voice-Language': speech.language }).send(speech.audio.bytes)
+  } catch (error) {
+    if (speech) releaseSynthesizedAudio(speech)
+    if (sendProjectError(res, error)) return
+    const status = speakStatus[error.code]
+    res.status(status || 500).json({ error: status ? error.message : 'Speech synthesis failed', code: status ? error.code : 'VOICE_TTS_FAILED' })
   }
 })
 
@@ -116,7 +157,15 @@ r.post('/turn', async (req, res) => {
       persisted = { activityRecorded: true }
     }
     const costTurn = { id: result.voiceTurnId, sessionId: result.sessionId, userId: req.user.id, projectId: project.id, agent: result.agent }
-    await recordVoiceUsage({ turn: costTurn, stage: 'stt', idempotencyKey: requestKey ? `${requestKey}:stt` : undefined, usage: { audioSeconds: Number(body.durationSeconds || 0), provider: 'deterministic-local', model: 'fixture-stt-v1' } }, { db: client })
+    // The speech-to-text stage belongs to whoever actually performed it. A
+    // media-recorder turn was transcribed by POST /voice/transcribe, which has
+    // already written voice.stt against the real provider; writing it again
+    // here would collide on the idempotency key and be silently swallowed,
+    // leaving the provider attribution correct only by accident of ordering.
+    if (body.inputMode !== 'media-recorder') {
+      const browserSpeech = body.inputMode === 'browser-speech'
+      await recordVoiceUsage({ turn: costTurn, stage: 'stt', idempotencyKey: requestKey ? `${requestKey}:stt` : undefined, billable: false, usage: { audioSeconds: Number(body.durationSeconds || 0), provider: browserSpeech ? 'browser-speech' : 'deterministic-local', model: browserSpeech ? 'web-speech-api' : 'fixture-stt-v1' } }, { db: client })
+    }
     await recordVoiceUsage({ turn: costTurn, stage: 'agent', idempotencyKey: requestKey ? `${requestKey}:agent` : undefined, usage: { provider: 'deterministic-local', model: `${result.agent}-voice-orchestrator-v1` } }, { db: client })
     await recordVoiceUsage({ turn: costTurn, stage: 'tts', idempotencyKey: requestKey ? `${requestKey}:tts` : undefined, usage: { characters: speech.usage.characters, provider: speech.provider, model: speech.model } }, { db: client })
     await client.query('COMMIT')

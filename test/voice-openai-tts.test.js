@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
 import { DeterministicTextToSpeechAdapter, OpenAITextToSpeechAdapter, createTextToSpeechAdapter } from '../src/voice/adapters.js'
 import { publicAudioDescriptor, releaseSynthesizedAudio, withEphemeralSynthesis } from '../src/voice/audioLifecycle.js'
 
@@ -105,4 +106,18 @@ test('synthesized audio is zeroed and never surfaces in a public descriptor', as
   const scopedBytes = scoped.audio.bytes
   await assert.rejects(withEphemeralSynthesis(scoped, () => { throw new Error('downstream failed') }), /downstream failed/)
   assert.ok(scopedBytes.every(byte => byte === 0), 'synthesized bytes must be zeroed even when the consumer throws')
+})
+
+test('speak route streams ephemeral audio and never persists or names the vendor', () => {
+  const source = fs.readFileSync(new URL('../src/routes/voice-agent.js', import.meta.url), 'utf8')
+  assert.match(source, /r\.post\('\/speak'/)
+  assert.match(source, /await requireProject\(req, body\.projectId \|\| req\.query\.projectId\)/)
+  assert.match(source, /VOICE_SPEAK_REPLAY/)
+  assert.match(source, /enforceVoiceCostLimits\(\{ turnCostUsd: estimateVoiceCostUsd/)
+  // Bytes are released only after the socket drains, and only ever sent inline.
+  assert.match(source, /res\.once\('close', \(\) => releaseSynthesizedAudio\(speech\)\)/)
+  assert.match(source, /'Cache-Control': 'no-store'/)
+  assert.doesNotMatch(source, /audioUrl|writeFile|createWriteStream|INSERT INTO voice_audio/)
+  // The speech-to-text stage is not double-written for media-recorder turns.
+  assert.match(source, /if \(body\.inputMode !== 'media-recorder'\) \{/)
 })
