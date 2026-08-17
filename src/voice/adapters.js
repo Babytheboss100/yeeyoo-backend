@@ -15,6 +15,8 @@ export class DeterministicSpeechToTextAdapter {
 }
 export class DeterministicTextToSpeechAdapter {
   constructor() { this.provider = 'deterministic-local'; this.model = 'fixture-tts-v1'; this.streaming = false }
+  // Fixtures need no credential, so they are always usable.
+  get configured() { return true }
   async synthesize({ text, language, voiceIdentity = 'tony-standard', audioFormat = 'wav', signal } = {}) {
     if (signal?.aborted) throw failure('VOICE_CANCELLED', 'Speech synthesis cancelled')
     const normalizedText = String(text || '').trim(); if (!normalizedText) throw failure('VOICE_TTS_EMPTY', 'Text-to-speech requires text')
@@ -106,6 +108,9 @@ export class OpenAITextToSpeechAdapter {
   constructor({ apiKey, model = 'gpt-4o-mini-tts', fetchImpl = globalThis.fetch, timeoutMs = 30000, baseUrl = PROVIDER_BASE_URL } = {}) {
     this.provider = 'openai'; this.model = String(model || 'gpt-4o-mini-tts'); this.apiKey = apiKey; this.fetchImpl = fetchImpl; this.timeoutMs = Number(timeoutMs) || 30000; this.baseUrl = baseUrl; this.streaming = false
   }
+  // Whether this adapter could actually reach the provider. Callers advertising
+  // synthesis to a client need this without exposing the credential itself.
+  get configured() { return Boolean(this.apiKey) }
   async synthesize({ text, language, voiceIdentity = 'tony-standard', audioFormat = 'mp3', signal } = {}) {
     if (!this.apiKey) throw failure('VOICE_TTS_NOT_CONFIGURED', 'Real speech synthesis is not configured')
     if (signal?.aborted) throw failure('VOICE_CANCELLED', 'Speech synthesis cancelled')

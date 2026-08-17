@@ -1,6 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import pg from 'pg'
+import dotenv from 'dotenv'
+
+// Every other database-backed test loads the disposable test connection string
+// itself; without this the file failed closed on a missing variable rather than
+// running, so it was passing on nobody's machine but an exported shell.
+dotenv.config({ override: true })
 
 const EXPECTED_DATABASE = 'yeeyoo_phase13_test'
 const USER = '00000000-0000-4000-8000-000000000001'

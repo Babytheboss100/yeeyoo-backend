@@ -7,10 +7,11 @@ import { pool } from '../db.js'
 import { recordProjectActivity } from '../lib/projectActivity.js'
 import { saveSosyDelegation, updateSosyDelegation } from '../sosy/store.js'
 import { saveArtifact } from '../marketing/artifacts.js'
-import { createDeterministicVoiceAdapters, createSpeechToTextAdapter, createTextToSpeechAdapter } from '../voice/adapters.js'
+import { createSpeechToTextAdapter, createTextToSpeechAdapter } from '../voice/adapters.js'
 import { estimateVoiceCostUsd, recordVoiceUsage } from '../voice/cost.js'
 import { releaseSynthesizedAudio, withEphemeralAudio } from '../voice/audioLifecycle.js'
 import { enforceVoiceCostLimits } from '../voice/domain.js'
+import { describeVoiceTts, planVoiceTurnLedgerStages } from '../voice/turnContract.js'
 
 const r = Router()
 r.use(auth)
@@ -134,9 +135,10 @@ r.post('/turn', async (req, res) => {
         return rows[0]
       },
     })
-    const { tts } = createDeterministicVoiceAdapters()
+    // A clarification turn has no settled conversation language yet, so the
+    // reply is bilingual and the descriptor falls back to the requested one.
     const speechLanguage = result.conversationLanguage || (body.language && body.language !== 'AUTO' ? body.language : 'en')
-    const speech = await tts.synthesize({ text: result.replyText, language: speechLanguage, voiceIdentity: result.agent === 'tony' ? 'tony-standard' : 'sosy-standard' })
+    const tts = describeVoiceTts({ agent: result.agent, language: speechLanguage, replyText: result.replyText })
     let persisted
     if (result.agent === 'tony') {
       let conversationId = body.conversationId || null
@@ -157,21 +159,19 @@ r.post('/turn', async (req, res) => {
       persisted = { activityRecorded: true }
     }
     const costTurn = { id: result.voiceTurnId, sessionId: result.sessionId, userId: req.user.id, projectId: project.id, agent: result.agent }
-    // The speech-to-text stage belongs to whoever actually performed it. A
-    // media-recorder turn was transcribed by POST /voice/transcribe, which has
-    // already written voice.stt against the real provider; writing it again
-    // here would collide on the idempotency key and be silently swallowed,
-    // leaving the provider attribution correct only by accident of ordering.
-    if (body.inputMode !== 'media-recorder') {
-      const browserSpeech = body.inputMode === 'browser-speech'
-      await recordVoiceUsage({ turn: costTurn, stage: 'stt', idempotencyKey: requestKey ? `${requestKey}:stt` : undefined, billable: false, usage: { audioSeconds: Number(body.durationSeconds || 0), provider: browserSpeech ? 'browser-speech' : 'deterministic-local', model: browserSpeech ? 'web-speech-api' : 'fixture-stt-v1' } }, { db: client })
+    // Each stage belongs to whoever actually performed it: transcription to
+    // /voice/transcribe when the client recorded audio, synthesis to
+    // /voice/speak when the reply is actually spoken. This route only ever
+    // writes what it ran itself.
+    for (const entry of planVoiceTurnLedgerStages({ inputMode: body.inputMode, agent: result.agent, durationSeconds: body.durationSeconds })) {
+      await recordVoiceUsage({ turn: costTurn, ...entry, idempotencyKey: requestKey ? `${requestKey}:${entry.stage}` : undefined }, { db: client })
     }
-    await recordVoiceUsage({ turn: costTurn, stage: 'agent', idempotencyKey: requestKey ? `${requestKey}:agent` : undefined, usage: { provider: 'deterministic-local', model: `${result.agent}-voice-orchestrator-v1` } }, { db: client })
-    await recordVoiceUsage({ turn: costTurn, stage: 'tts', idempotencyKey: requestKey ? `${requestKey}:tts` : undefined, usage: { characters: speech.usage.characters, provider: speech.provider, model: speech.model } }, { db: client })
     await client.query('COMMIT')
     // Clarification is a successful conversational outcome, not a transport
     // error; the client must be able to render and speak the replyText.
-    res.status(200).json({ ...result, ...persisted, audio: speech.audio, voiceProvider: speech.provider, streaming: false })
+    // No audio and no vendor name ever ride on this body: the client streams
+    // speech on demand from the endpoint the descriptor names.
+    res.status(200).json({ ...result, ...persisted, audio: null, streaming: false, tts })
   } catch (error) {
     if (client) await client.query('ROLLBACK').catch(() => {})
     if (sendProjectError(res, error)) return

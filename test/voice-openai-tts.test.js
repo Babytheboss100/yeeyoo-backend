@@ -118,6 +118,9 @@ test('speak route streams ephemeral audio and never persists or names the vendor
   assert.match(source, /res\.once\('close', \(\) => releaseSynthesizedAudio\(speech\)\)/)
   assert.match(source, /'Cache-Control': 'no-store'/)
   assert.doesNotMatch(source, /audioUrl|writeFile|createWriteStream|INSERT INTO voice_audio/)
-  // The speech-to-text stage is not double-written for media-recorder turns.
-  assert.match(source, /if \(body\.inputMode !== 'media-recorder'\) \{/)
+  // The turn route writes only the stages it ran itself; the plan that decides
+  // them, and the media-recorder skip inside it, is locked by
+  // test/voice-turn-contract.test.js.
+  assert.match(source, /planVoiceTurnLedgerStages\(\{ inputMode: body\.inputMode/)
+  assert.doesNotMatch(source, /stage: 'tts'[^}]*db: client/)
 })
