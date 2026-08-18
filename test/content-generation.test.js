@@ -167,6 +167,10 @@ test('the provider reply is read from the text block, not the first block', () =
   const source = fs.readFileSync(new URL('../src/marketing/contentGenerator.js', import.meta.url), 'utf8')
   assert.doesNotMatch(source, /body\?\.content\?\.\[0\]\?\.text/)
   assert.match(source, /\.find\(block => block\?\.type === 'text'\)\?\.text/)
+  // The output budget also covers the thinking block. At 1000 the thinking
+  // alone reached the ceiling and the reply carried no text block at all.
+  assert.doesNotMatch(source, /max_tokens: 1000/)
+  assert.match(source, /const MAX_OUTPUT_TOKENS = 4000/)
   // The model must be one the API still serves; the dated Sonnet 4 id 404s.
   assert.doesNotMatch(source, /claude-sonnet-4-20250514/)
   assert.match(source, /export const CONTENT_MODEL = 'claude-sonnet-5'/)

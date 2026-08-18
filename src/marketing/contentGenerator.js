@@ -96,6 +96,8 @@ function truncate(text, channel) {
   return space > max * 0.6 ? cut.slice(0, space) : cut
 }
 
+const MAX_OUTPUT_TOKENS = 4000
+
 async function callAnthropic({ system, user, apiKey, model, signal }) {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -105,7 +107,10 @@ async function callAnthropic({ system, user, apiKey, model, signal }) {
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
     },
-    body: JSON.stringify({ model, max_tokens: 1000, system, messages: [{ role: 'user', content: user }] }),
+    // A post is at most 700 characters, but the budget also has to cover the
+    // model's thinking. At 1000 the thinking alone hit the ceiling and the
+    // reply came back with no text block at all, scored here as a failure.
+    body: JSON.stringify({ model, max_tokens: MAX_OUTPUT_TOKENS, system, messages: [{ role: 'user', content: user }] }),
   })
   if (!response.ok) {
     let detail = `HTTP ${response.status}`
