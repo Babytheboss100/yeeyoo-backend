@@ -175,8 +175,15 @@ r.post('/turn', async (req, res) => {
   } catch (error) {
     if (client) await client.query('ROLLBACK').catch(() => {})
     if (sendProjectError(res, error)) return
-    const status = Number(error.status) || 400
-    res.status(status >= 400 && status < 500 ? status : 500).json({ error: status < 500 ? error.message : 'Voice turn failed', code: error.code || 'VOICE_TURN_FAILED' })
+    // Only errors this route shaped itself carry a `status`; their message is
+    // safe to return. Anything else - a pg error carrying table, constraint and
+    // SQLSTATE detail - becomes a generic 500.
+    const status = Number(error.status)
+    const expected = Number.isInteger(status) && status >= 400 && status < 500
+    // A driver's SQLSTATE ('23514') is a disclosure just like the message it
+    // arrived with, so only codes this application minted are echoed back.
+    const code = /^[A-Z][A-Z0-9]*(_[A-Z0-9]+)+$/.test(String(error.code || '')) ? error.code : 'VOICE_TURN_FAILED'
+    res.status(expected ? status : 500).json({ error: expected ? error.message : 'Voice turn failed', code })
   } finally {
     client?.release()
   }
