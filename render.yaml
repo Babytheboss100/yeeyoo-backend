@@ -2,7 +2,10 @@ services:
   - type: web
     name: yeeyoo-backend
     runtime: node
-    region: frankfurt
+    # Both region lines in this file named frankfurt while the live service and
+    # the live database are in oregon, so the file described infrastructure
+    # that does not exist. Text only - nothing is applied or moved by this.
+    region: oregon
     plan: starter
     buildCommand: npm install
     startCommand: node src/index.js
@@ -115,5 +118,6 @@ services:
 
 databases:
   - name: yeeyoo-db
-    region: frankfurt
+    # Same correction as the service above: the live database is in oregon.
+    region: oregon
     plan: starter
