@@ -166,7 +166,10 @@ test('the provider reply is read from the text block, not the first block', () =
   // key and a 200 response. The extraction is not injectable, so it is locked here.
   const source = fs.readFileSync(new URL('../src/marketing/contentGenerator.js', import.meta.url), 'utf8')
   assert.doesNotMatch(source, /body\?\.content\?\.\[0\]\?\.text/)
-  assert.match(source, /\.find\(block => block\?\.type === 'text'\)\?\.text/)
+  assert.match(source, /\.filter\(block => block\?\.type === 'text'\)\.map\(block => block\.text\)\.join\(''\)/)
+  // A truncated reply must be able to say so instead of reading as a failure.
+  assert.match(source, /stopReason: body\?\.stop_reason \|\| null/)
+  assert.match(source, /stop_reason=\$\{result\.value\?\.stopReason/)
   // The output budget also covers the thinking block. At 1000 the thinking
   // alone reached the ceiling and the reply carried no text block at all.
   assert.doesNotMatch(source, /max_tokens: 1000/)

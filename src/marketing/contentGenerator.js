@@ -124,8 +124,13 @@ async function callAnthropic({ system, user, apiKey, model, signal }) {
   return {
     // The first block is not always the answer: current models put a thinking
     // block ahead of the text one, and reading index 0 yielded an empty string
-    // that this module scored as a provider failure.
-    text: (Array.isArray(body?.content) ? body.content : []).find(block => block?.type === 'text')?.text || '',
+    // that this module scored as a provider failure. Every text block is taken,
+    // not just the first, so a split reply is not silently truncated.
+    text: (Array.isArray(body?.content) ? body.content : []).filter(block => block?.type === 'text').map(block => block.text).join(''),
+    // Carried out so an empty reply can say why it was empty: a budget that ran
+    // out mid-thought is a truncated response, not a provider failure.
+    stopReason: body?.stop_reason || null,
+    blockTypes: (Array.isArray(body?.content) ? body.content : []).map(block => block?.type),
     usage: {
       tokensIn: Number(body?.usage?.input_tokens ?? 0),
       tokensOut: Number(body?.usage?.output_tokens ?? 0),
@@ -190,7 +195,10 @@ export async function generateVariantCopy({
     if (result.status !== 'fulfilled' || !result.value?.text?.trim()) {
       // Falling back silently made a provider outage indistinguishable from a
       // missing credential. The reason is logged, never the prompt or the key.
-      console.warn('[content] variant kept its fixture:', result.status === 'rejected' ? result.reason?.message || 'provider call failed' : 'provider returned no text')
+      const why = result.status === 'rejected'
+        ? result.reason?.message || 'provider call failed'
+        : `provider returned no text (stop_reason=${result.value?.stopReason || 'unknown'}, blocks=${(result.value?.blockTypes || []).join('+') || 'none'})`
+      console.warn(`[content] ${variant.channel} kept its fixture: ${why}`)
       return { ...variant, generated: false }
     }
     usage.tokensIn += result.value.usage.tokensIn
