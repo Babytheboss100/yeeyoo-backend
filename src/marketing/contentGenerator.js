@@ -117,7 +117,10 @@ async function callAnthropic({ system, user, apiKey, model, signal }) {
   }
   const body = await response.json()
   return {
-    text: body?.content?.[0]?.text || '',
+    // The first block is not always the answer: current models put a thinking
+    // block ahead of the text one, and reading index 0 yielded an empty string
+    // that this module scored as a provider failure.
+    text: (Array.isArray(body?.content) ? body.content : []).find(block => block?.type === 'text')?.text || '',
     usage: {
       tokensIn: Number(body?.usage?.input_tokens ?? 0),
       tokensOut: Number(body?.usage?.output_tokens ?? 0),
@@ -126,7 +129,10 @@ async function callAnthropic({ system, user, apiKey, model, signal }) {
   }
 }
 
-export const CONTENT_MODEL = 'claude-sonnet-4-20250514'
+// Sonnet 5 is the current Sonnet on this account. The dated Sonnet 4 id this
+// shipped with 404s as not_found_error, which made every generation attempt
+// fall back to the fixture and look like a missing credential.
+export const CONTENT_MODEL = 'claude-sonnet-5'
 
 export function contentGenerationAvailable(env = process.env) {
   const key = env.ANTHROPIC_API_KEY
@@ -176,7 +182,12 @@ export async function generateVariantCopy({
 
   const generated = variants.map((variant, index) => {
     const result = results[index]
-    if (result.status !== 'fulfilled' || !result.value?.text?.trim()) return { ...variant, generated: false }
+    if (result.status !== 'fulfilled' || !result.value?.text?.trim()) {
+      // Falling back silently made a provider outage indistinguishable from a
+      // missing credential. The reason is logged, never the prompt or the key.
+      console.warn('[content] variant kept its fixture:', result.status === 'rejected' ? result.reason?.message || 'provider call failed' : 'provider returned no text')
+      return { ...variant, generated: false }
+    }
     usage.tokensIn += result.value.usage.tokensIn
     usage.tokensOut += result.value.usage.tokensOut
     usage.cachedInputTokens += result.value.usage.cachedInputTokens

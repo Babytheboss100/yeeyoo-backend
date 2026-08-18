@@ -158,3 +158,16 @@ test('the fixture draft still shapes what generation is asked to rewrite', () =>
   assert.ok(draft.content.variants.every(variant => variant.channel && variant.language === 'pt-BR' && typeof variant.text === 'string'))
   assert.ok(draft.content.variants.every(variant => variant.text.startsWith('[')), 'the fixture still echoes the objective')
 })
+
+test('the provider reply is read from the text block, not the first block', () => {
+  // Current models put a thinking block ahead of the text one. Reading
+  // content[0] returned an empty string, which this module scores as a failed
+  // call - so every generation silently fell back to the fixture with a working
+  // key and a 200 response. The extraction is not injectable, so it is locked here.
+  const source = fs.readFileSync(new URL('../src/marketing/contentGenerator.js', import.meta.url), 'utf8')
+  assert.doesNotMatch(source, /body\?\.content\?\.\[0\]\?\.text/)
+  assert.match(source, /\.find\(block => block\?\.type === 'text'\)\?\.text/)
+  // The model must be one the API still serves; the dated Sonnet 4 id 404s.
+  assert.doesNotMatch(source, /claude-sonnet-4-20250514/)
+  assert.match(source, /export const CONTENT_MODEL = 'claude-sonnet-5'/)
+})
