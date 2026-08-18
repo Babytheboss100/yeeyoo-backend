@@ -92,7 +92,7 @@ async function analyzeAndCreateBusiness({ userId, projectId, url }) {
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-5',
       max_tokens: 1500,
       system: BRAND_SYSTEM,
       messages: [{ role: 'user', content: BRAND_PROMPT(url, scraped) }],
@@ -185,7 +185,7 @@ r.post('/analyse', async (req, res) => {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-5',
         max_tokens: 2000,
         system: `Du er en ekspert på digital markedsføring og forretningsanalyse. Du analyserer nettsider og bedrifter for å lage innholdsstrategier for sosiale medier. Svar ALLTID på norsk. Svar KUN med gyldig JSON, ingen annen tekst.`,
         messages: [{
@@ -354,7 +354,7 @@ r.post('/generate-month', checkAILimit('smart_planner'), async (req, res) => {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-5',
         max_tokens: 4000,
         system: `Du er en ekspert på korte, fengende sosiale medier-innlegg. MAKS 3 setninger totalt. Ikke mer. Kutt alt unødvendig.
 
@@ -582,7 +582,7 @@ Svar med KUN den nye posten — ingen forklaring, ingen markdown-wrapper.`
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-5',
         max_tokens: 800,
         messages: [{ role: 'user', content: promptText }],
       }),

@@ -167,7 +167,7 @@ r.post('/conversations/:id/suggest', async (req, res) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-5',
         max_tokens: 400,
         system: 'Du er en hjelpsom social media manager. Foreslå ett kort, vennlig og profesjonelt svar på siste kundemelding. Svar KUN med selve meldingsteksten, ingen forklaring.',
         messages: [{ role: 'user', content: `Samtale:\n${transcript}\n\nForeslå vårt neste svar:` }],

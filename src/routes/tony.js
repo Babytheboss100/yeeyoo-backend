@@ -24,7 +24,7 @@ r.use(auth)
 const PROVIDERS = {
   claude: {
     env: 'ANTHROPIC_API_KEY',
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-5',
     call: callAnthropic,
   },
   'gpt-4o': {

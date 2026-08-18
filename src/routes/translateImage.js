@@ -46,7 +46,7 @@ r.post('/generate', checkAILimit('translate_image'), async (req, res) => {
   try {
     // 1) OCR via Claude vision
     const ocr = await anthropic({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-5',
       max_tokens: 1000,
       messages: [{
         role: 'user',
@@ -60,7 +60,7 @@ r.post('/generate', checkAILimit('translate_image'), async (req, res) => {
 
     // 2) Oversett via Claude
     const tr = await anthropic({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-5',
       max_tokens: 1000,
       messages: [{
         role: 'user',
