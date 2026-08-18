@@ -5,6 +5,7 @@
 // uten mask returneres OCR+oversettelse uten nytt bilde (auto-maske er TODO).
 // Synkron — Anthropic-stegene tar ~5-10s. Authed + tenant-isolert + rate-limited.
 
+import { anthropicText } from '../lib/anthropicText.js'
 import { Router } from 'express'
 import crypto from 'crypto'
 import { pool } from '../db.js'
@@ -28,7 +29,7 @@ async function anthropic(body) {
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data?.error?.message || `anthropic ${res.status}`)
-  return { text: (data.content?.[0]?.text || '').trim(), usage: data.usage }
+  return { text: anthropicText(data).trim(), usage: data.usage }
 }
 
 // POST /generate — { image_url, source_lang, target_lang, project_id, mask_url? }
@@ -47,7 +48,7 @@ r.post('/generate', checkAILimit('translate_image'), async (req, res) => {
     // 1) OCR via Claude vision
     const ocr = await anthropic({
       model: 'claude-sonnet-5',
-      max_tokens: 1000,
+      max_tokens: 4000,
       messages: [{
         role: 'user',
         content: [
@@ -61,7 +62,7 @@ r.post('/generate', checkAILimit('translate_image'), async (req, res) => {
     // 2) Oversett via Claude
     const tr = await anthropic({
       model: 'claude-sonnet-5',
-      max_tokens: 1000,
+      max_tokens: 4000,
       messages: [{
         role: 'user',
         content: `Translate the following text${sourceLang ? ` from ${sourceLang}` : ''} to ${targetLang}. Return ONLY the translation, preserving line breaks:\n\n${detectedText}`,

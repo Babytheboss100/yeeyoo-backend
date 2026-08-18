@@ -3,6 +3,7 @@
 // Webhook (GET verify + POST motta) er UAUTENTISERT (Meta). Resten krever auth
 // og er tenant-isolert. Tony kan foreslå svar via /conversations/:id/suggest.
 
+import { anthropicText } from '../lib/anthropicText.js'
 import { Router } from 'express'
 import crypto from 'crypto'
 import { pool } from '../db.js'
@@ -168,14 +169,14 @@ r.post('/conversations/:id/suggest', async (req, res) => {
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: 'claude-sonnet-5',
-        max_tokens: 400,
+        max_tokens: 4000,
         system: 'Du er en hjelpsom social media manager. Foreslå ett kort, vennlig og profesjonelt svar på siste kundemelding. Svar KUN med selve meldingsteksten, ingen forklaring.',
         messages: [{ role: 'user', content: `Samtale:\n${transcript}\n\nForeslå vårt neste svar:` }],
       }),
     })
     const data = await aiRes.json().catch(() => ({}))
     if (!aiRes.ok) return res.status(502).json({ error: data?.error?.message || `anthropic ${aiRes.status}` })
-    res.json({ suggestion: (data.content?.[0]?.text || '').trim() })
+    res.json({ suggestion: anthropicText(data).trim() })
   } catch (e) {
     console.error('[inbox/suggest]', e.message)
     res.status(502).json({ error: e.message })

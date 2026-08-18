@@ -1,4 +1,5 @@
 // ─── Yeeyoo Multi-AI Generator ──────────────────────────────────────────────
+import { anthropicText } from '../lib/anthropicText.js'
 export const AI_MODELS = {
   claude:   { id:'claude',   label:'Claude',   color:'#c96442', envKey:'ANTHROPIC_API_KEY' },
   gpt4o:    { id:'gpt4o',    label:'GPT-4o',   color:'#10a37f', envKey:'OPENAI_API_KEY' },
@@ -79,10 +80,10 @@ async function generateClaude({ system, user, apiKey }) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method:'POST',
     headers:{ 'Content-Type':'application/json', 'x-api-key':apiKey, 'anthropic-version':'2023-06-01' },
-    body: JSON.stringify({ model:'claude-sonnet-5', max_tokens:1000, system, messages:[{role:'user',content:user}] })
+    body: JSON.stringify({ model:'claude-sonnet-5', max_tokens:4000, system, messages:[{role:'user',content:user}] })
   })
   if (!r.ok) { const e=await r.json(); throw new Error(e.error?.message||'Claude feil') }
-  const d = await r.json(); return d.content[0].text
+  const d = await r.json(); return anthropicText(d)
 }
 
 async function generateGPT4o({ system, user, apiKey }) {

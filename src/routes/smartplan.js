@@ -1,3 +1,4 @@
+import { anthropicText } from '../lib/anthropicText.js'
 import { Router } from 'express'
 import crypto from 'crypto'
 import { pool } from '../db.js'
@@ -93,7 +94,7 @@ async function analyzeAndCreateBusiness({ userId, projectId, url }) {
     },
     body: JSON.stringify({
       model: 'claude-sonnet-5',
-      max_tokens: 1500,
+      max_tokens: 4000,
       system: BRAND_SYSTEM,
       messages: [{ role: 'user', content: BRAND_PROMPT(url, scraped) }],
     }),
@@ -103,7 +104,7 @@ async function analyzeAndCreateBusiness({ userId, projectId, url }) {
     throw new Error(`anthropic ${aiRes.status}: ${body.slice(0, 200)}`)
   }
   const aiData = await aiRes.json()
-  const rawText = aiData.content?.[0]?.text || ''
+  const rawText = anthropicText(aiData)
 
   let dna
   try {
@@ -217,7 +218,7 @@ Svar med denne eksakte JSON-strukturen:
     }
 
     const claudeData = await claudeRes.json()
-    const analysisText = claudeData.content[0].text
+    const analysisText = anthropicText(claudeData)
 
     // Parse JSON from Claude response
     let analysis
@@ -412,7 +413,7 @@ Generer nøyaktig ${selectedDays.length} innlegg. Varier innhold, pilarer og pla
     const claudeData = await claudeRes.json()
     aiTokensIn += claudeData.usage?.input_tokens || 0
     aiTokensOut += claudeData.usage?.output_tokens || 0
-    const genText = claudeData.content?.[0]?.text
+    const genText = anthropicText(claudeData)
     if (!genText) {
       console.error('generate-month: empty Claude response:', JSON.stringify(claudeData))
       throw new Error('Tom respons fra Claude')
@@ -583,7 +584,7 @@ Svar med KUN den nye posten — ingen forklaring, ingen markdown-wrapper.`
       },
       body: JSON.stringify({
         model: 'claude-sonnet-5',
-        max_tokens: 800,
+        max_tokens: 4000,
         messages: [{ role: 'user', content: promptText }],
       }),
     })
@@ -592,7 +593,7 @@ Svar med KUN den nye posten — ingen forklaring, ingen markdown-wrapper.`
       throw new Error(`anthropic ${aiRes.status}: ${body.slice(0, 200)}`)
     }
     const data = await aiRes.json()
-    const newContent = (data.content?.[0]?.text || '').trim()
+    const newContent = anthropicText(data).trim()
     if (!newContent) throw new Error('Tom respons fra AI')
 
     const { rows } = await pool.query(

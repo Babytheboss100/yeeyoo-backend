@@ -1,3 +1,4 @@
+import { anthropicText } from '../lib/anthropicText.js'
 import { Router } from 'express'
 import crypto from 'crypto'
 import { pool } from '../db.js'
@@ -86,13 +87,13 @@ Returner JSON med NØYAKTIG denne formen:
       },
       body: JSON.stringify({
         model: 'claude-sonnet-5',
-        max_tokens: 1500,
+        max_tokens: 4000,
         messages: [{ role: 'user', content: prompt }],
       }),
     })
     if (!aiRes.ok) throw new Error(`anthropic ${aiRes.status}`)
     const data = await aiRes.json()
-    const raw = data.content?.[0]?.text || ''
+    const raw = anthropicText(data)
     const json = JSON.parse((raw.match(/\{[\s\S]*\}/) || ['{}'])[0])
     // Logg kostnad, men ikke mot 'seo'-kvoten (eget label).
     await logAIUsage({ userId: req.user.id, endpoint: 'seo_competitors', tokensIn: data.usage?.input_tokens, tokensOut: data.usage?.output_tokens })
@@ -152,7 +153,7 @@ Returner JSON med NØYAKTIG denne formen:
     })
     if (!aiRes.ok) throw new Error(`anthropic ${aiRes.status}`)
     const data = await aiRes.json()
-    const raw = data.content?.[0]?.text || ''
+    const raw = anthropicText(data)
     const json = JSON.parse((raw.match(/\{[\s\S]*\}/) || ['{}'])[0])
     await logAIUsage({ userId: req.user.id, endpoint: 'seo', tokensIn: data.usage?.input_tokens, tokensOut: data.usage?.output_tokens })
     res.json(json)

@@ -7,6 +7,7 @@
 // Tabeller: tony_conversations, tony_messages (Sesjon I-migrasjon).
 // Auth: krever Bearer JWT — `auth`-middleware setter req.user.
 
+import { anthropicText } from '../lib/anthropicText.js'
 import { Router } from 'express'
 import crypto from 'crypto'
 import { pool } from '../db.js'
@@ -80,7 +81,7 @@ async function callAnthropic({ apiKey, model, messages }) {
     throw new Error(`anthropic ${res.status}: ${body.slice(0, 300)}`)
   }
   const data = await res.json()
-  const reply = data.content?.[0]?.text || ''
+  const reply = anthropicText(data)
   return {
     reply,
     tokensIn: data.usage?.input_tokens ?? null,

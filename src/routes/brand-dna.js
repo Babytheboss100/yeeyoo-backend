@@ -11,6 +11,7 @@
 // AI-provider: Anthropic Claude (same som smartplan.js). Hvis nøkkel mangler
 // returnerer vi 503.
 
+import { anthropicText } from '../lib/anthropicText.js'
 import { Router } from 'express'
 import crypto from 'crypto'
 import { pool } from '../db.js'
@@ -125,7 +126,7 @@ r.post('/analyze', checkAILimit('brand_dna'), async (req, res) => {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-5',
-        max_tokens: 1500,
+        max_tokens: 4000,
         system: SYSTEM,
         messages: [{ role: 'user', content: PROMPT(url, scraped) }],
       }),
@@ -135,7 +136,7 @@ r.post('/analyze', checkAILimit('brand_dna'), async (req, res) => {
       throw new Error(`anthropic ${aiRes.status}: ${body.slice(0, 200)}`)
     }
     const aiData = await aiRes.json()
-    const rawText = aiData.content?.[0]?.text || ''
+    const rawText = anthropicText(aiData)
 
     // 3) Parse JSON (Claude kan pakke i ```json — håndter begge)
     let dna
