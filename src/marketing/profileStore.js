@@ -27,3 +27,44 @@ export async function saveMarketingProfile({ userId, projectId, profile, source 
   if (!rows[0]) throw new Error('Project marketing profile ownership conflict')
   return typeof rows[0].profile === 'string' ? JSON.parse(rows[0].profile) : rows[0].profile
 }
+
+// The brand context a copy model needs, or null when the project has nothing to
+// say yet. getMarketingProfile never returns null - a project with no profile
+// and no legacy business row still gets an empty canonical profile - so it is
+// emptiness, not absence, that disqualifies a project here.
+//
+// Everything below can originate in crawled text, which this codebase treats as
+// evidence and never as instructions. It is therefore trimmed and capped before
+// it reaches a prompt, and this helper never throws: a missing or broken profile
+// must degrade the copy, never fail the delegation.
+const brandText = (value) => {
+  const raw = typeof value === 'string' ? value : value?.claim || value?.name || value?.title || value?.summary || ''
+  return String(raw).replace(/\s+/g, ' ').trim().slice(0, 400)
+}
+const brandList = (values, limit) => (Array.isArray(values) ? values : []).map(brandText).filter(Boolean).slice(0, limit)
+
+export async function loadBrandContext({ userId, projectId, db = pool }) {
+  let profile
+  try {
+    profile = await getMarketingProfile({ userId, projectId, db })
+  } catch {
+    return null
+  }
+  const brand = profile?.brand && typeof profile.brand === 'object' ? profile.brand : {}
+  const context = {
+    name: brandText(profile?.websiteUrl && hostnameOf(profile.websiteUrl)) || null,
+    about: brandText(brand.summary) || null,
+    audience: brandList(profile?.audiences, 1)[0] || null,
+    tone: brandList(brand.voice, 4).join(', ') || null,
+    offers: brandList(profile?.offers, 5),
+    objectives: brandList(profile?.objectives, 5),
+    keywords: brandList(profile?.keywords, 12).join(', ') || null,
+  }
+  const populated = context.about || context.audience || context.tone || context.keywords
+    || context.offers.length || context.objectives.length
+  return populated ? context : null
+}
+
+function hostnameOf(url) {
+  try { return new URL(String(url)).hostname.replace(/^www\./, '') } catch { return '' }
+}
