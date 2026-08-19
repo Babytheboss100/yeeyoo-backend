@@ -78,7 +78,12 @@ export async function sendWhatsAppMessage({ waba, to, text, template }) {
 // Returnerer true hvis gyldig. Hvis META_APP_SECRET ikke er satt → true (dev).
 export function verifyMetaSignature(rawBody, signatureHeader) {
   const secret = process.env.META_APP_SECRET
-  if (!secret) return process.env.NODE_ENV !== 'production'
+  if (!secret) {
+    // Feilet apent utenfor produksjon: uten secret ble enhver usignert payload
+    // akseptert, og webhooken skriver til inbox_threads og whatsapp_conversations.
+    console.warn('meta signature check skipped: secret missing')
+    return false
+  }
   if (!signatureHeader) return false
   const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(rawBody).digest('hex')
   try {
