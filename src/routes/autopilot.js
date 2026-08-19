@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
+import { CrawlError, validateCrawlUrl } from '../services/safeCrawler.js'
 
 const r = Router()
 r.use(auth)
@@ -9,9 +10,20 @@ r.post('/generate', async (req, res) => {
   const { url } = req.body
   if (!url) return res.status(400).json({ error: 'URL mangler' })
 
+  // URL-en gikk uinterpolert inn i jina-stien: private mal ble videresendt til
+  // en ekstern scraper, og ../-sekvenser kunne styre hva jina faktisk hentet.
+  // validateCrawlUrl avviser lokale/private mal og normaliserer stien.
+  let target
+  try {
+    target = await validateCrawlUrl(url)
+  } catch (error) {
+    if (error instanceof CrawlError) return res.status(400).json({ error: 'Ugyldig eller blokkert URL', code: error.code })
+    throw error
+  }
+
   try {
     // 1. Scrape with Jina Reader
-    const jinaRes = await fetch(`https://r.jina.ai/${url}`, {
+    const jinaRes = await fetch(`https://r.jina.ai/${encodeURI(target.href)}`, {
       headers: { 'Accept': 'text/plain' }
     })
     if (!jinaRes.ok) throw new Error('Kunne ikke hente innhold fra URL')

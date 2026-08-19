@@ -10,6 +10,7 @@ import crypto from 'crypto'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
 import { enforceProjectOwnership } from '../middleware/project.js'
+import { CrawlError, validateCrawlUrl } from '../services/safeCrawler.js'
 import { checkAILimit, logAIUsage } from '../middleware/aiLimit.js'
 import { falRun, extractImageUrl } from '../lib/fal.js'
 import { logAudit } from '../lib/audit.js'
@@ -41,6 +42,18 @@ r.post('/generate', checkAILimit('translate_image'), async (req, res) => {
   if (!imageUrl || !targetLang) return res.status(400).json({ error: 'image_url og target_lang kreves' })
 
   if (!projectId) return res.status(400).json({ error: 'projectId kreves' })
+
+  // Providerne henter disse URL-ene, ikke vi - men de kommer fra klienten, og
+  // en ubekreftet URL gjor providerkontoen var til en apen henteproxy og
+  // lagrer malet i image_translations. Samme vakt, kun validering.
+  try {
+    await validateCrawlUrl(imageUrl)
+    if (maskUrl) await validateCrawlUrl(maskUrl)
+  } catch (error) {
+    if (error instanceof CrawlError) return res.status(400).json({ error: 'Ugyldig eller blokkert bilde-URL', code: error.code })
+    throw error
+  }
+
   let durable
   let id
   try {

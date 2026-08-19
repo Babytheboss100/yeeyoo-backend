@@ -12,6 +12,8 @@ import { auth } from '../middleware/auth.js'
 import { enforceProjectOwnership } from '../middleware/project.js'
 import { resolveAccount, listAccounts } from '../lib/socialAccounts.js'
 import { encryptToken, decryptToken } from '../lib/tokenCrypto.js'
+import { safeBinaryFetch } from '../services/safeBinaryFetch.js'
+import { CrawlError } from '../services/safeCrawler.js'
 import { logAudit } from '../lib/audit.js'
 
 const r = Router()
@@ -49,10 +51,17 @@ r.post('/post', async (req, res) => {
     if (!account || !account.active) return res.status(404).json({ error: 'Ingen aktiv YouTube-konto funnet' })
     const token = decryptToken(account.access_token)
 
-    // Hent videoen
-    const vidRes = await fetch(videoUrl)
-    if (!vidRes.ok) return res.status(400).json({ error: `Kunne ikke hente videoUrl (${vidRes.status})` })
-    const videoBuf = Buffer.from(await vidRes.arrayBuffer())
+    // Hent videoen bak SSRF-vakten. videoUrl kommer fra klienten, så en rå
+    // fetch her lot en autentisert bruker nå metadata-endepunkt og interne
+    // porter - og upstream-statusen vi returnerte gjorde det til et orakel.
+    let videoBuf
+    try {
+      const fetched = await safeBinaryFetch(videoUrl, { allowedPrefixes: ['video/', 'application/octet-stream'] })
+      videoBuf = fetched.buffer
+    } catch (error) {
+      if (error instanceof CrawlError) return res.status(400).json({ error: 'Kunne ikke hente videoUrl', code: error.code })
+      throw error
+    }
 
     // Bygg multipart/related body
     const boundary = 'yeeyoo' + crypto.randomBytes(8).toString('hex')

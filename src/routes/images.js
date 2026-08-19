@@ -3,6 +3,7 @@ import { auth } from '../middleware/auth.js'
 import { pool } from '../db.js'
 import { renderBrandedImageSafe } from '../services/imageRenderer.js'
 import { fal } from '@fal-ai/client'
+import { safeBinaryFetch } from '../services/safeBinaryFetch.js'
 
 const r = Router()
 r.use(auth)
@@ -66,11 +67,11 @@ async function generateWithFlux(content, platform, projectName) {
     throw new Error('Ingen bildedata i FLUX respons')
   }
 
-  // Fetch image and convert to base64
-  const imgRes = await fetch(imageUrl)
-  if (!imgRes.ok) throw new Error(`Kunne ikke laste ned FLUX-bilde: ${imgRes.status}`)
-  const buf = Buffer.from(await imgRes.arrayBuffer())
-  return `data:image/png;base64,${buf.toString('base64')}`
+  // Fetch image and convert to base64. URL-en kommer fra FLUX-responsen, og
+  // providerinnhold er utiltrodd: en kompromittert eller ombygd provider skal
+  // ikke kunne peke oss mot en intern adresse.
+  const { buffer } = await safeBinaryFetch(imageUrl, { allowedPrefixes: ['image/'], maxBytes: 16 * 1024 * 1024 })
+  return `data:image/png;base64,${buffer.toString('base64')}`
 }
 
 // POST /api/images/generate — unified image generation
