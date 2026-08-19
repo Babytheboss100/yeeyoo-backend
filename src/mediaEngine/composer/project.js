@@ -8,6 +8,7 @@ export const COMPOSER_BUILD = Object.freeze({
   sourceArchiveVersion: 'v0.3.1',
   packageVersion: '0.3.0',
   upstreamArchiveSha256: '647be6f4cd385c0197ba896d9cdc62938486ce2df984d2b406392e5ed1792428',
+  localModifications: ['sprint2-P1: clip-audio, ducking, focalPoint, fontRegistry'],
   integrationHardening: 'cancel-resource-bounds-and-p1-media-v1',
   featureSet: 'clip-audio-ducking-focal-font-provenance-v1',
 })
