@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import dotenv from 'dotenv'
 import pg from 'pg'
+import { ARTIFACT_CHECKSUM_VERSION, artifactContentChecksum } from '../src/marketing/artifacts.js'
 import {createSession,findSession,revokeSession} from '../src/lib/session.js'
 
 dotenv.config({override:true})
@@ -33,8 +34,8 @@ test('database rejects cross-project approval envelope even when every reference
   const tenantB='00000000-0000-4000-8000-000000000002',projectB='20000000-0000-4000-8000-000000000001'
   const campaign=`phase15-campaign-${crypto.randomUUID()}`,artifact=`phase15-artifact-${crypto.randomUUID()}`
   await c.query(`INSERT INTO marketing_campaigns(id,user_id,project_id,name,status,context) VALUES($1,$2,$3,'Phase15','draft','{}')`,[campaign,tenantA,projectA])
-  await c.query(`INSERT INTO marketing_artifacts(id,root_id,user_id,project_id,campaign_id,type,purpose,content,provenance,provider,model)
-    VALUES($1,$1,$2,$3,$4,'copy','Phase15','{}','{}','mock','mock')`,[artifact,tenantA,projectA,campaign])
+  await c.query(`INSERT INTO marketing_artifacts(id,root_id,user_id,project_id,campaign_id,type,purpose,content,provenance,provider,model,checksum_version,content_checksum)
+    VALUES($1,$1,$2,$3,$4,'copy','Phase15','{}','{}','mock','mock',$5,$6)`,[artifact,tenantA,projectA,campaign,ARTIFACT_CHECKSUM_VERSION,artifactContentChecksum({content:{},provenance:{}})])
   await assert.rejects(c.query(`INSERT INTO autopilot_action_approvals
     (id,user_id,project_id,campaign_id,artifact_id,artifact_version,action,policy_version,provider_connection_id,provider_connection_version,fingerprint,nonce,approved_by_user_id,expires_at)
     VALUES($1,$2,$3,$4,$5,1,'publish',1,'mock',1,$6,$7,$2,NOW()+INTERVAL '1 hour')`,

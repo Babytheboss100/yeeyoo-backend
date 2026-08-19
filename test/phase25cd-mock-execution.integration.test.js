@@ -3,8 +3,11 @@ import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import dotenv from 'dotenv'
 import pg from 'pg'
+import { ARTIFACT_CHECKSUM_VERSION, artifactContentChecksum } from '../src/marketing/artifacts.js'
 import {PHASE19} from '../src/services/phase19Fixture.js'
 import {publishPost} from '../src/publishing/service.js'
+
+const P25CD_CONTENT_CHECKSUM = artifactContentChecksum({ content: { socialCopy: 'safe' }, provenance: {} })
 dotenv.config({override:true})
 
 test('mock execution persists one logical Activity and observed Performance Event',async t=>{
@@ -13,8 +16,8 @@ test('mock execution persists one logical Activity and observed Performance Even
   const suffix=crypto.randomUUID(),campaignId=`p25cd-c-${suffix}`,artifactId=`p25cd-a-${suffix}`,postId=crypto.randomUUID(),decisionId=crypto.randomUUID(),key=`p25cd-${suffix}`
   try{
     await db.query(`INSERT INTO marketing_campaigns(id,user_id,project_id,name,status,context) VALUES($1,$2,$3,'P25CD','active','{}')`,[campaignId,PHASE19.userId,PHASE19.projectId])
-    await db.query(`INSERT INTO marketing_artifacts(id,root_id,user_id,project_id,campaign_id,type,purpose,channel,content,provenance,provider,model,status,artifact_version) VALUES($1,$1,$2,$3,$4,'copy','P25CD','linkedin','{"socialCopy":"safe"}','{}','mock','mock','approved',1)`,[artifactId,PHASE19.userId,PHASE19.projectId,campaignId])
-    await db.query(`INSERT INTO marketing_approval_decisions(id,user_id,project_id,campaign_id,artifact_id,artifact_version,decision) VALUES($1,$2,$3,$4,$5,1,'approved')`,[decisionId,PHASE19.userId,PHASE19.projectId,campaignId,artifactId])
+    await db.query(`INSERT INTO marketing_artifacts(id,root_id,user_id,project_id,campaign_id,type,purpose,channel,content,provenance,provider,model,status,artifact_version,checksum_version,content_checksum) VALUES($1,$1,$2,$3,$4,'copy','P25CD','linkedin','{"socialCopy":"safe"}','{}','mock','mock','approved',1,$5,$6)`,[artifactId,PHASE19.userId,PHASE19.projectId,campaignId,ARTIFACT_CHECKSUM_VERSION,P25CD_CONTENT_CHECKSUM])
+    await db.query(`INSERT INTO marketing_approval_decisions(id,user_id,project_id,campaign_id,artifact_id,artifact_version,decision,checksum_version,content_checksum) VALUES($1,$2,$3,$4,$5,1,'approved',$6,$7)`,[decisionId,PHASE19.userId,PHASE19.projectId,campaignId,artifactId,ARTIFACT_CHECKSUM_VERSION,P25CD_CONTENT_CHECKSUM])
     await db.query(`INSERT INTO posts(id,user_id,project_id,campaign_id,platform,content,status,artifact_id,artifact_version) VALUES($1,$2,$3,$4,'linkedin','safe','approved',$5,1)`,[postId,PHASE19.userId,PHASE19.projectId,campaignId,artifactId])
     const args={userId:PHASE19.userId,postId,projectId:PHASE19.projectId,campaignId,artifactId,artifactVersion:1,idempotencyKey:key,adapter:{id:'mock-local',publish:async()=>({provider:'mock-local',externalId:key,status:'published'})},db}
     const first=await publishPost(args),second=await publishPost(args);assert.equal(first.body.idempotent,false);assert.equal(second.body.idempotent,true)

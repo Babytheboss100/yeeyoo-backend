@@ -108,7 +108,7 @@ test('the specialist handler stores what actually wrote the plan', async () => {
   const db = { async query(sql, params) {
     if (sql.includes('project_marketing_profiles')) return { rows: [{ profile: { version: 2, objectives: ['Leads'], audiences: ['Founders'], offers: ['Audit'], channels: ['linkedin', 'instagram'], brand: { summary: 'AI marketing', voice: ['direct'] } } }] }
     if (sql.includes('FROM competitors') || sql.includes('FROM channel_connections')) return { rows: [] }
-    if (sql.includes('INSERT INTO marketing_artifacts')) { writes.push(params); return { rows: [{ id: 'a1', root_id: 'a1', user_id: 'u1', project_id: 'p1', type: 'social', status: 'draft', content: {} }] } }
+    if (sql.includes('INSERT INTO marketing_artifacts')) { writes.push(params); return {rows:[{id:params[0],root_id:params[1],parent_id:params[2],user_id:params[3],project_id:params[4],campaign_id:params[5],type:params[6],schema_version:params[7],artifact_version:params[8],status:'draft',purpose:params[9],channel:params[10],content:JSON.parse(params[11]),provenance:JSON.parse(params[12]),provider:params[13],model:params[14],checksum_version:params[15],content_checksum:params[16],output_checksum:params[17]}]} }
     throw new Error(sql)
   } }
   const generateCopy = async ({ variants }) => ({

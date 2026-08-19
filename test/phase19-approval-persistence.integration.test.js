@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import dotenv from 'dotenv'
 import pg from 'pg'
+import { ARTIFACT_CHECKSUM_VERSION, artifactContentChecksum } from '../src/marketing/artifacts.js'
 import {approvalFingerprint} from '../src/tony/autopilotPolicy.js'
 import {consumeApprovalEnvelope} from '../src/tony/approvalStore.js'
 
@@ -16,7 +17,7 @@ test('real persistence permits exactly one consume and audits replay/failure rec
   const fingerprint=approvalFingerprint({...context,action:'publish',policyVersion:1})
   try{
     await db.query(`INSERT INTO marketing_campaigns(id,user_id,project_id,name,status,context) VALUES($1,$2,$3,'Phase19','draft','{}')`,[campaignId,userId,projectId])
-    await db.query(`INSERT INTO marketing_artifacts(id,root_id,user_id,project_id,campaign_id,type,purpose,content,provenance,provider,model) VALUES($1,$1,$2,$3,$4,'copy','Phase19','{}','{}','mock','mock')`,[artifactId,userId,projectId,campaignId])
+    await db.query(`INSERT INTO marketing_artifacts(id,root_id,user_id,project_id,campaign_id,type,purpose,content,provenance,provider,model,checksum_version,content_checksum) VALUES($1,$1,$2,$3,$4,'copy','Phase19','{}','{}','mock','mock',$5,$6)`,[artifactId,userId,projectId,campaignId,ARTIFACT_CHECKSUM_VERSION,artifactContentChecksum({content:{},provenance:{}})])
     await db.query(`INSERT INTO tony_execution_plans(id,user_id,project_id,campaign_id,objective,status,graph) VALUES($1,$2,$3,$4,'Phase19','planned','{}')`,[planId,userId,projectId,campaignId])
     await db.query(`INSERT INTO autopilot_policies(id,project_id,campaign_id,level,channels,max_budget,currency,created_by) VALUES($1,$2,$3,3,'["mock"]',25,'NOK',$4)`,[`p19-policy-${suffix}`,projectId,campaignId,userId])
     await db.query(`INSERT INTO autopilot_action_approvals(id,user_id,project_id,campaign_id,plan_id,artifact_id,artifact_version,action,policy_version,provider_connection_id,provider_connection_version,fingerprint,nonce,approved_by_user_id,approved_at,expires_at) VALUES($1,$2,$3,$4,$5,$6,1,'publish',1,'mock-connection',1,$7,$8,$2,NOW()-INTERVAL '1 minute',NOW()+INTERVAL '1 hour')`,[approvalId,userId,projectId,campaignId,planId,artifactId,fingerprint,nonce])

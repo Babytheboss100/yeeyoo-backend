@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import dotenv from 'dotenv'
 import pg from 'pg'
+import { ARTIFACT_CHECKSUM_VERSION, artifactContentChecksum } from '../src/marketing/artifacts.js'
 import { PHASE19 } from '../src/services/phase19Fixture.js'
 import { approvalFingerprint } from '../src/tony/autopilotPolicy.js'
 import { consumeApprovalEnvelope } from '../src/tony/approvalStore.js'
@@ -25,7 +26,7 @@ test('stale approval is denied durably and a freshly fingerprinted approval reco
   const context = { userId: PHASE19.userId, projectId: PHASE19.projectId, campaignId, planId, artifactId, artifactVersion: 1, budget: 1, currency: 'NOK', channels: ['mock'], providerConnected: true, providerConnectionId: 'mock', providerConnectionVersion: 1, approvalNonce: nonce }
   try {
     await db.query(`INSERT INTO marketing_campaigns(id,user_id,project_id,name,status,context) VALUES($1,$2,$3,'P22','draft','{}')`, [campaignId, PHASE19.userId, PHASE19.projectId])
-    await db.query(`INSERT INTO marketing_artifacts(id,root_id,user_id,project_id,campaign_id,type,purpose,content,provenance,provider,model) VALUES($1,$1,$2,$3,$4,'copy','P22','{}','{}','mock','mock')`, [artifactId, PHASE19.userId, PHASE19.projectId, campaignId])
+    await db.query(`INSERT INTO marketing_artifacts(id,root_id,user_id,project_id,campaign_id,type,purpose,content,provenance,provider,model,checksum_version,content_checksum) VALUES($1,$1,$2,$3,$4,'copy','P22','{}','{}','mock','mock',$5,$6)`, [artifactId, PHASE19.userId, PHASE19.projectId, campaignId, ARTIFACT_CHECKSUM_VERSION, artifactContentChecksum({content:{},provenance:{}})])
     await db.query(`INSERT INTO tony_execution_plans(id,user_id,project_id,campaign_id,objective,status,graph) VALUES($1,$2,$3,$4,'P22','planned','{}')`, [planId, PHASE19.userId, PHASE19.projectId, campaignId])
     await db.query(`INSERT INTO autopilot_policies(id,project_id,campaign_id,level,channels,max_budget,currency,created_by) VALUES($1,$2,$3,3,'["mock"]',1,'NOK',$4)`, [policyId, PHASE19.projectId, campaignId, PHASE19.userId])
     const staleFingerprint = approvalFingerprint({ ...context, action: 'publish', policyVersion: 1 })
