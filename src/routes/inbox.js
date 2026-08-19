@@ -11,6 +11,7 @@ import { verifyMetaSignature } from '../lib/whatsapp.js'
 import { decryptToken } from '../lib/tokenCrypto.js'
 import { logAudit } from '../lib/audit.js'
 import { getMetaProvider } from '../lib/metaProvider.js'
+import { checkAILimit } from '../middleware/aiLimit.js'
 
 const r = Router()
 
@@ -136,7 +137,7 @@ r.post('/reply', async (req, res) => {
 })
 
 // POST /conversations/:id/suggest — Tony foreslår et svar basert på siste meldinger.
-r.post('/conversations/:id/suggest', async (req, res) => {
+r.post('/conversations/:id/suggest', checkAILimit('inbox'), async (req, res) => {
   try {
     const { rows: own } = await pool.query('SELECT * FROM inbox_threads WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id])
     if (!own.length) return res.status(404).json({ error: 'Samtale ikke funnet' })

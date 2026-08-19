@@ -37,10 +37,10 @@ const TIER_ALIASES = {
 
 // limit: -1 = ubegrenset (logges fortsatt). 0 = ikke tillatt (krever oppgradering).
 const LIMITS = {
-  free:       { tony_chat: { limit: 5,   window: '24h' }, brand_dna: { limit: 1,  window: '24h' }, smart_planner: { limit: 0,  window: '24h' }, seo: { limit: 0,  window: '30d' }, photoshoot: { limit: 0,  window: '24h' }, translate_image: { limit: 0,  window: '24h' } },
-  tier1:      { tony_chat: { limit: 50,  window: '24h' }, brand_dna: { limit: 5,  window: '24h' }, smart_planner: { limit: 2,  window: '24h' }, seo: { limit: 5,  window: '30d' }, photoshoot: { limit: 10, window: '24h' }, translate_image: { limit: 10, window: '24h' } },
-  tier2:      { tony_chat: { limit: 200, window: '24h' }, brand_dna: { limit: 20, window: '24h' }, smart_planner: { limit: 10, window: '24h' }, seo: { limit: 20, window: '30d' }, photoshoot: { limit: 50, window: '24h' }, translate_image: { limit: 50, window: '24h' } },
-  enterprise: { tony_chat: { limit: -1,  window: '24h' }, brand_dna: { limit: -1, window: '24h' }, smart_planner: { limit: -1, window: '24h' }, seo: { limit: -1, window: '30d' }, photoshoot: { limit: -1, window: '24h' }, translate_image: { limit: -1, window: '24h' } },
+  free:       { tony_chat: { limit: 5,   window: '24h' }, brand_dna: { limit: 1,  window: '24h' }, smart_planner: { limit: 0,  window: '24h' }, seo: { limit: 0,  window: '30d' }, video: { limit: 0,  window: '24h' }, inbox: { limit: 5,   window: '24h' }, photoshoot: { limit: 0,  window: '24h' }, translate_image: { limit: 0,  window: '24h' } },
+  tier1:      { tony_chat: { limit: 50,  window: '24h' }, brand_dna: { limit: 5,  window: '24h' }, smart_planner: { limit: 2,  window: '24h' }, seo: { limit: 5,  window: '30d' }, video: { limit: 10, window: '24h' }, inbox: { limit: 50,  window: '24h' }, photoshoot: { limit: 10, window: '24h' }, translate_image: { limit: 10, window: '24h' } },
+  tier2:      { tony_chat: { limit: 200, window: '24h' }, brand_dna: { limit: 20, window: '24h' }, smart_planner: { limit: 10, window: '24h' }, seo: { limit: 20, window: '30d' }, video: { limit: 50, window: '24h' }, inbox: { limit: 200, window: '24h' }, photoshoot: { limit: 50, window: '24h' }, translate_image: { limit: 50, window: '24h' } },
+  enterprise: { tony_chat: { limit: -1,  window: '24h' }, brand_dna: { limit: -1, window: '24h' }, smart_planner: { limit: -1, window: '24h' }, seo: { limit: -1, window: '30d' }, video: { limit: -1, window: '24h' }, inbox: { limit: -1,  window: '24h' }, photoshoot: { limit: -1, window: '24h' }, translate_image: { limit: -1, window: '24h' } },
 }
 
 const WINDOW_SQL = { '24h': "INTERVAL '24 hours'", '30d': "INTERVAL '30 days'" }

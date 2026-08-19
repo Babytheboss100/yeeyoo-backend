@@ -13,13 +13,18 @@ import { resolveModel, submitVideo, checkVideo } from '../lib/falVideo.js'
 import { logAudit } from '../lib/audit.js'
 import { beginDurableJob, durableResult } from '../jobs/jobCutover.js'
 import { transitionJob } from '../jobs/jobStore.js'
+import { checkAILimit, logAIUsage } from '../middleware/aiLimit.js'
 
 const r = Router()
 r.use(auth)
 r.use(enforceProjectOwnership)
 
+// Estimat per generering (USD). Video er den dyreste enheten i systemet, og
+// ruten hadde verken kvote eller kostnadsforing for revisjonen 19. august.
+const VIDEO_COST = 0.50
+
 // POST /generate — { projectId?, prompt, model?, imageUrl? }
-r.post('/generate', async (req, res) => {
+r.post('/generate', checkAILimit('video'), async (req, res) => {
   const { projectId, prompt, model, imageUrl } = req.body || {}
   if (!projectId) return res.status(400).json({ error: 'projectId kreves' })
   if (!prompt && !imageUrl) return res.status(400).json({ error: 'prompt eller imageUrl kreves' })
@@ -38,6 +43,7 @@ r.post('/generate', async (req, res) => {
       [id, req.user.id, projectId || null, falModel, prompt || null, imageUrl || null, requestId]
     )
     await pool.query('UPDATE ai_jobs SET provider_job_id=$1, updated_at=NOW() WHERE id=$2 AND user_id=$3 AND project_id=$4', [requestId, id, req.user.id, projectId])
+    await logAIUsage({ userId: req.user.id, endpoint: 'video', cost: VIDEO_COST })
     await logAudit({
       userId: req.user.id, action: 'video.generate', resourceType: 'video_generation', resourceId: id,
       metadata: { model: falModel, hasImage: !!imageUrl },
