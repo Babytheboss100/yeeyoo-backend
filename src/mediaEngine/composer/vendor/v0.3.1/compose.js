@@ -11,7 +11,7 @@ import { join, dirname } from 'node:path'
 import { validateProject } from './schema.js'
 import { computeTimeline } from './timeline.js'
 import { renderFrame } from './renderFrame.js'
-import { resolveAssets, loadImages, elKey } from './assets.js'
+import { resolveAssets, loadImages, registerProjectFonts, applyRegisteredFonts, elKey } from './assets.js'
 import { createEncoder } from './encode.js'
 import { extractClipFrames, clipFramePath } from './videoFrames.js'
 import { verifyOutput } from './verify.js'
@@ -55,6 +55,8 @@ export async function composeVideo(projectInput, opts) {
     // Resolver alle assets FØR noe annet — fail fast.
     const resolved = resolveAssets(project, assetMap)
     const images = await loadImages(project, resolved)
+    const fontProvenance = registerProjectFonts(project, resolved)
+    applyRegisteredFonts(project, fontProvenance)
 
     // Pre-ekstraher frames for hvert video-element.
     const clips = new Map() // el.id → { extract, el, sceneIndex }
@@ -89,18 +91,33 @@ export async function composeVideo(projectInput, opts) {
     const canvas = createCanvas(width, height)
     const ctx = canvas.getContext('2d')
 
-    const expectAudio = !!(project.audio?.music || project.audio?.voiceover)
+    const clipAudio = []
+    for (const { el, sceneIndex } of clips.values()) {
+      if (el.audio !== true && el.audio?.enabled !== true) continue
+      const sceneTiming = timeline.scenes[sceneIndex]
+      const srcEnd = el.srcEnd ?? (el.srcStart + project.scenes[sceneIndex].duration)
+      clipAudio.push({
+        path: resolved.get(elKey(el)),
+        volume: el.audio === true ? 1 : el.audio.volume,
+        srcStart: el.srcStart,
+        srcEnd,
+        delaySeconds: sceneTiming.start,
+      })
+    }
+    const expectAudio = !!(project.audio?.music || project.audio?.voiceover || clipAudio.length)
     encoder = createEncoder({
       width, height, fps, outPath: tmpOut, ffmpegPath,
       signal,
       duration: timeline.totalDuration,
-      audio: project.audio ? {
-        music: project.audio.music
+      audio: expectAudio ? {
+        music: project.audio?.music
           ? { path: resolved.get('audio:music'), volume: project.audio.music.volume, fadeOut: project.audio.music.fadeOut }
           : null,
-        voiceover: project.audio.voiceover
+        voiceover: project.audio?.voiceover
           ? { path: resolved.get('audio:voiceover'), volume: project.audio.voiceover.volume }
           : null,
+        clips: clipAudio,
+        ducking: project.audio?.ducking ?? null,
       } : null,
     })
 
@@ -171,6 +188,7 @@ export async function composeVideo(projectInput, opts) {
       totalFrames: timeline.totalFrames,
       durationSeconds: timeline.totalDuration,
       width, height, fps,
+      fonts: fontProvenance,
     }
   } catch (e) {
     if (encoder) await encoder.kill()

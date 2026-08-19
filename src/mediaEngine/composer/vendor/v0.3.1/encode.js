@@ -14,7 +14,11 @@ import { existsSync } from 'node:fs'
 
 /**
  * buildFfmpegArgs({width,height,fps,outPath,duration,audio}) → string[]
- * audio: { music: {path, volume, fadeOut}, voiceover: {path, volume} }
+ * audio: {
+ *   music: {path, volume, fadeOut}, voiceover: {path, volume},
+ *   clips: [{path, volume, srcStart, srcEnd, delaySeconds}],
+ *   ducking: {enabled, threshold, ratio, attackMs, releaseMs}
+ * }
  * (interne stier — allerede resolvert fra assetId av compose.js)
  */
 export function buildFfmpegArgs({ width, height, fps, outPath, duration, audio }) {
@@ -29,30 +33,57 @@ export function buildFfmpegArgs({ width, height, fps, outPath, duration, audio }
 
   const music = audio?.music ?? null
   const vo = audio?.voiceover ?? null
+  const clips = Array.isArray(audio?.clips) ? audio.clips : []
   if (music) args.push('-i', music.path)
   if (vo) args.push('-i', vo.path)
+  for (const clip of clips) args.push('-i', clip.path)
 
-  if (music || vo) {
+  if (music || vo || clips.length) {
     const parts = []
-    const mixIn = []
+    const bedInputs = []
     let idx = 1
     if (music) {
       const fade = music.fadeOut !== false && duration > 1.5
         ? `,afade=t=out:st=${(duration - 1.2).toFixed(2)}:d=1.2`
         : ''
       parts.push(`[${idx}:a]volume=${music.volume}${fade},apad[m]`)
-      mixIn.push('[m]')
+      bedInputs.push('[m]')
       idx++
     }
     if (vo) {
       parts.push(`[${idx}:a]volume=${vo.volume},apad[v]`)
-      mixIn.push('[v]')
+      idx++
     }
-    const mix =
-      mixIn.length === 2
-        ? `${mixIn.join('')}amix=inputs=2:duration=longest:dropout_transition=0[a]`
-        : `${mixIn[0]}anull[a]`
-    args.push('-filter_complex', [...parts, mix].join(';'))
+    clips.forEach((clip, clipIndex) => {
+      const trimEnd = Number.isFinite(clip.srcEnd) ? `:end=${clip.srcEnd}` : ''
+      const delayMs = Math.max(0, Math.round((clip.delaySeconds || 0) * 1000))
+      parts.push(`[${idx}:a]atrim=start=${clip.srcStart || 0}${trimEnd},asetpts=PTS-STARTPTS,volume=${clip.volume},adelay=${delayMs}:all=1,apad[c${clipIndex}]`)
+      bedInputs.push(`[c${clipIndex}]`)
+      idx++
+    })
+
+    let bed = null
+    if (bedInputs.length === 1) {
+      parts.push(`${bedInputs[0]}anull[bed]`)
+      bed = '[bed]'
+    } else if (bedInputs.length > 1) {
+      parts.push(`${bedInputs.join('')}amix=inputs=${bedInputs.length}:duration=longest:dropout_transition=0[bed]`)
+      bed = '[bed]'
+    }
+
+    if (vo && bed && audio?.ducking?.enabled === true) {
+      const d = audio.ducking
+      parts.push(`[v]asplit=2[vside][vmix]`)
+      parts.push(`${bed}[vside]sidechaincompress=threshold=${d.threshold}:ratio=${d.ratio}:attack=${d.attackMs}:release=${d.releaseMs}[ducked]`)
+      parts.push(`[ducked][vmix]amix=inputs=2:duration=longest:dropout_transition=0[a]`)
+    } else if (vo && bed) {
+      parts.push(`${bed}[v]amix=inputs=2:duration=longest:dropout_transition=0[a]`)
+    } else if (vo) {
+      parts.push('[v]anull[a]')
+    } else {
+      parts.push(`${bed}anull[a]`)
+    }
+    args.push('-filter_complex', parts.join(';'))
     args.push('-map', '0:v', '-map', '[a]')
   }
 
@@ -64,7 +95,7 @@ export function buildFfmpegArgs({ width, height, fps, outPath, duration, audio }
     '-crf', '20',
     '-movflags', '+faststart',
   )
-  if (music || vo) args.push('-c:a', 'aac', '-b:a', '160k')
+  if (music || vo || clips.length) args.push('-c:a', 'aac', '-b:a', '160k')
   args.push(outPath)
   return args
 }
@@ -84,6 +115,9 @@ export function createEncoder(opts) {
     throw new Error(`musikkfil finnes ikke: ${opts.audio.music.path}`)
   if (opts.audio?.voiceover && !existsSync(opts.audio.voiceover.path))
     throw new Error(`voiceover-fil finnes ikke: ${opts.audio.voiceover.path}`)
+  for (const clip of opts.audio?.clips || []) {
+    if (!existsSync(clip.path)) throw new Error(`klipplydfil finnes ikke: ${clip.path}`)
+  }
 
   const args = buildFfmpegArgs(opts)
   const proc = spawnImpl(ffmpegPath, args, { stdio: ['pipe', 'ignore', 'pipe'] })

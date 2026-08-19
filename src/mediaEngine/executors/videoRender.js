@@ -12,6 +12,8 @@ const MIME_EXTENSIONS = Object.freeze({
   'video/mp4': 'mp4',
   'audio/mpeg': 'mp3',
   'audio/wav': 'wav',
+  'font/ttf': 'ttf',
+  'font/otf': 'otf',
 })
 const SHA256_RE = /^[a-f0-9]{64}$/
 
@@ -42,6 +44,21 @@ function uniqueAssetIds(project, collectAssetRefs) {
     ids.push(assetId)
   }
   return ids
+}
+
+function verifiedFontProvenance(project, rendered) {
+  const expected = new Map((project.fonts || []).map(font => [font.family, font.sha256]))
+  if (expected.size === 0) return Object.freeze([])
+  if (!Array.isArray(rendered) || rendered.length !== expected.size) throw Object.assign(new Error('Composer font provenance is incomplete'), { code: 'COMPOSER_FONT_PROVENANCE_FAILED' })
+  const seen = new Set()
+  const result = rendered.map(item => {
+    if (!item || typeof item.family !== 'string' || seen.has(item.family) || expected.get(item.family) !== item.sha256) {
+      throw Object.assign(new Error('Composer font provenance does not match project'), { code: 'COMPOSER_FONT_PROVENANCE_FAILED' })
+    }
+    seen.add(item.family)
+    return Object.freeze({ family: item.family, sha256: item.sha256 })
+  })
+  return Object.freeze(result)
 }
 
 async function materializeAssets({ project, assetBindings, collectAssetRefs, storage, workDir }) {
@@ -93,6 +110,7 @@ export async function executeVideoRender({
     }
     const stored = await storage.put({ bytes, mimeType: 'video/mp4', expectedSha256: sha256 })
     if (stored.sha256 !== sha256 || stored.sizeBytes !== bytes.length) throw Object.assign(new Error('Stored render verification failed'), { code: 'RENDER_STORAGE_INTEGRITY_FAILED' })
+    const fonts = verifiedFontProvenance(prepared.project, render?.fonts)
     return Object.freeze({
       stored,
       genome: prepared.genome,
@@ -104,6 +122,7 @@ export async function executeVideoRender({
         width: render.width,
         height: render.height,
         fps: render.fps,
+        fonts,
       }),
       artifactContent: Object.freeze({
         media: Object.freeze({
@@ -120,4 +139,3 @@ export async function executeVideoRender({
     await rm(workDir, { recursive: true, force: true })
   }
 }
-

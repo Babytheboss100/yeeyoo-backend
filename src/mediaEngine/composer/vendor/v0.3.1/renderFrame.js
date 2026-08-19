@@ -8,6 +8,7 @@
 import { ease, lerp } from './easing.js'
 import { activeScenes, elementVisibility, activeCaptions } from './timeline.js'
 import { elKey, bgKey } from './assets.js'
+import { fittedPlacement } from './geometry.js'
 
 export function renderFrame(ctx, project, timeline, t, assets) {
   const { width: W, height: H } = project.canvas
@@ -134,7 +135,7 @@ function drawImageEl(ctx, el, img, W, H) {
   const w = (el.w ?? img.width / W) * W
   const h = el.h != null ? el.h * H : (w * img.height) / img.width
   clipRounded(ctx, el, w, h)
-  drawFitted(ctx, img, -w / 2, -h / 2, w, h, el.fit ?? 'fill')
+  drawFitted(ctx, img, -w / 2, -h / 2, w, h, el.fit ?? 'fill', el.focalPoint)
 }
 
 function drawVideoEl(ctx, el, frameImg, W, H) {
@@ -153,22 +154,18 @@ function clipRounded(ctx, el, w, h) {
   }
 }
 
-function drawFitted(ctx, img, x, y, w, h, fit) {
-  if (fit === 'fill' || !fit) {
-    ctx.drawImage(img, x, y, w, h)
-    return
-  }
-  const scale = fit === 'cover'
-    ? Math.max(w / img.width, h / img.height)
-    : Math.min(w / img.width, h / img.height)
-  const dw = img.width * scale, dh = img.height * scale
-  if (fit === 'cover') {
+function drawFitted(ctx, img, x, y, w, h, fit, focalPoint = null) {
+  const placement = fittedPlacement({
+    imageWidth: img.width, imageHeight: img.height,
+    x, y, width: w, height: h, fit, focalPoint,
+  })
+  if (placement.clip) {
     ctx.save()
     ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip()
-    ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh)
+    ctx.drawImage(img, placement.x, placement.y, placement.width, placement.height)
     ctx.restore()
   } else {
-    ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh)
+    ctx.drawImage(img, placement.x, placement.y, placement.width, placement.height)
   }
 }
 

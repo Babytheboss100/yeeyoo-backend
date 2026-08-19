@@ -34,8 +34,8 @@ function decode(row) {
 // This explicit creation path is enabled only after the additive genome
 // migration is approved and applied. Ordinary artifact creation remains
 // untouched and migration-safe.
-export async function saveComposerArtifact({ composerProject, genomeHints = {}, deriveGenome, ...artifactInput } = {}, db = pool) {
-  const artifact = createArtifactRecord(artifactInput)
+export async function saveComposerArtifact({ composerProject, genomeHints = {}, deriveGenome, artifactId, ...artifactInput } = {}, db = pool) {
+  const artifact = createArtifactRecord(artifactInput, artifactId ? { id: artifactId } : undefined)
   const genome = deriveGenome
     ? await deriveArtifactGenome({ composerProject, genomeHints, deriveGenome })
     : prepareVendoredComposerProject({ project: composerProject, hints: genomeHints }).genome

@@ -8,8 +8,12 @@ const MIME_EXTENSIONS = Object.freeze({
   'image/jpeg': 'jpg',
   'image/webp': 'webp',
   'video/mp4': 'mp4',
+  'audio/mpeg': 'mp3',
+  'audio/wav': 'wav',
+  'font/ttf': 'ttf',
+  'font/otf': 'otf',
 })
-const OBJECT_REF_RE = /^media\/([a-f0-9]{64})\.(png|jpg|webp|mp4)$/
+const OBJECT_REF_RE = /^media\/([a-f0-9]{64})\.(png|jpg|webp|mp4|mp3|wav|ttf|otf)$/
 const DEFAULT_MAX_BYTES = 64 * 1024 * 1024
 const DEFAULT_MAX_TOTAL_BYTES = 256 * 1024 * 1024
 const ROOT_WRITE_TAILS = new Map()

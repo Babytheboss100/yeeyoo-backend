@@ -22,6 +22,7 @@ export const LIMITS = {
   maxVideoElements: 10,
   maxCanvasDim: 2160,
   maxAnimationsPerElement: 20,
+  maxFonts: 16,
 }
 
 export function defaultProject(aspect = '9:16') {
@@ -84,6 +85,7 @@ export function validateProject(input, opts = {}) {
   const sceneIds = new Set()
   const globalElementIds = new Set() // compose kobler klipp/frames på el.id GLOBALT
   let videoElementCount = 0
+  let clipAudioCount = 0
   let totalDuration = 0
   let prevSceneDuration = null
   const ID_RE = /^[A-Za-z0-9_-]{1,64}$/ // IDer kan ende i filstier/nøkler — aldri fri tekst
@@ -160,8 +162,26 @@ export function validateProject(input, opts = {}) {
           err('BAD_TRIM', `${eat}.srcEnd`, 'må være > srcStart')
         el.fit = FITS.includes(el.fit) ? el.fit : 'cover'
         el.loop = el.loop === true // false → freeze siste frame
+        // Lyd fra videoklipp er alltid av som standard. Kun eksplisitt true
+        // eller { enabled: true } kan slippe klippets lyd inn i miksen.
+        if (el.audio != null && el.audio !== false) {
+          if (el.audio === true) el.audio = { enabled: true, volume: 1 }
+          else if (!isObj(el.audio)) err('BAD_CLIP_AUDIO', `${eat}.audio`, 'false, true eller objekt')
+          else {
+            el.audio.enabled = el.audio.enabled === true
+            el.audio.volume = inRange(el.audio.volume, 0, 2) ? el.audio.volume : 1
+          }
+          if (el.audio === true || el.audio?.enabled === true) clipAudioCount++
+        }
       }
-      if (el.type === 'image') el.fit = FITS.includes(el.fit) ? el.fit : null
+      if (el.type === 'image') {
+        el.fit = FITS.includes(el.fit) ? el.fit : null
+        if (el.focalPoint != null) {
+          if (!isObj(el.focalPoint) || !inRange(el.focalPoint.x, 0, 1) || !inRange(el.focalPoint.y, 0, 1))
+            err('BAD_FOCAL_POINT', `${eat}.focalPoint`, 'x/y må være tall i [0, 1]')
+          else el.focalPoint = { x: el.focalPoint.x, y: el.focalPoint.y }
+        }
+      }
 
       for (const k of ['x', 'y']) {
         el[k] = isNum(el[k]) ? el[k] : 0.5
@@ -250,6 +270,45 @@ export function validateProject(input, opts = {}) {
           err('MISSING_ASSET_ID', `audio.${trk}.assetId`, 'assetId kreves')
         a.volume = inRange(a.volume, 0, 2) ? a.volume : (trk === 'music' ? 0.3 : 1.0)
       }
+      if (p.audio.ducking != null) {
+        const d = p.audio.ducking
+        if (!isObj(d)) err('BAD_DUCKING', 'audio.ducking', 'må være objekt')
+        else {
+          d.enabled = d.enabled === true
+          if (d.enabled && !p.audio.voiceover)
+            err('DUCKING_REQUIRES_VOICEOVER', 'audio.ducking', 'aktiv ducking krever voiceover')
+          if (d.enabled && !p.audio.music && clipAudioCount === 0)
+            err('DUCKING_REQUIRES_BED', 'audio.ducking', 'aktiv ducking krever musikk eller klipplyd')
+          // FFmpeg sidechaincompress godtar threshold fra ca. 0.000976563.
+          d.threshold = inRange(d.threshold, 0.001, 1) ? d.threshold : 0.05
+          d.ratio = inRange(d.ratio, 1, 20) ? d.ratio : 8
+          d.attackMs = inRange(d.attackMs, 1, 2000) ? d.attackMs : 20
+          d.releaseMs = inRange(d.releaseMs, 1, 5000) ? d.releaseMs : 250
+        }
+      }
+    }
+  }
+
+  // Fontfiler er tenant-resolverte assets og krever innholdsbundet provenance.
+  if (p.fonts != null) {
+    if (!Array.isArray(p.fonts)) err('BAD_FONTS', 'fonts', 'må være liste')
+    else {
+      if (p.fonts.length > LIMITS.maxFonts) err('TOO_MANY_FONTS', 'fonts', `maks ${LIMITS.maxFonts}`)
+      const families = new Set()
+      p.fonts.forEach((font, i) => {
+        const at = `fonts[${i}]`
+        if (!isObj(font)) { err('BAD_FONT', at, 'må være objekt'); return }
+        if (!isStr(font.family) || !/^[A-Za-z0-9 _-]{1,64}$/.test(font.family))
+          err('BAD_FONT_FAMILY', `${at}.family`, '1–64 trygge tegn')
+        else if (families.has(font.family)) err('DUPLICATE_FONT_FAMILY', `${at}.family`, 'familien er duplisert')
+        else families.add(font.family)
+        const hasAssetId = isStr(font.assetId) && font.assetId.length > 0
+        const hasSrc = isStr(font.src) && font.src.length > 0
+        if (!hasAssetId && !(allowLocalPaths && hasSrc)) err('MISSING_ASSET_ID', `${at}.assetId`, 'assetId kreves')
+        if (hasSrc && !allowLocalPaths) err('LOCAL_PATH_FORBIDDEN', `${at}.src`, 'bruk assetId')
+        if (!isStr(font.sha256) || !/^[a-f0-9]{64}$/.test(font.sha256))
+          err('BAD_FONT_CHECKSUM', `${at}.sha256`, 'sha256 kreves som 64 lowercase hex')
+      })
     }
   }
 

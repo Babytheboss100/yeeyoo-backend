@@ -6,7 +6,7 @@ const SHA256_RE=/^[a-f0-9]{64}$/
 const OBJECT_REF_RE=/^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$/
 const CHECKSUM_V1='yeeyoo.artifact.content.sha256.v1'
 const LEGACY_CHECKSUM_V1='yeeyoo.artifact.legacy-pg-jsonb.v1'
-const MIME_BY_KIND=Object.freeze({image:new Set(['image/png','image/jpeg','image/webp']),video:new Set(['video/mp4']),audio:new Set(['audio/mpeg','audio/wav'])})
+const MIME_BY_KIND=Object.freeze({image:new Set(['image/png','image/jpeg','image/webp']),video:new Set(['video/mp4']),audio:new Set(['audio/mpeg','audio/wav']),font:new Set(['font/ttf','font/otf'])})
 
 function fail(code='VIDEO_ASSET_NOT_AVAILABLE',message='A referenced video asset is unavailable',status=409){throw new MediaJobError(code,message,{status})}
 function contentDigest(row){return crypto.createHash('sha256').update(canonicalStringify({content:row.content,provenance:row.provenance})).digest('hex')}
@@ -21,6 +21,7 @@ function safeRefs(project){
     }
     if(project.audio?.music)refs.push({kind:'audio',ref:project.audio.music})
     if(project.audio?.voiceover)refs.push({kind:'audio',ref:project.audio.voiceover})
+    for(const font of project.fonts||[])refs.push({kind:'font',ref:font})
     return refs
   }catch{return fail('INVALID_MEDIA_JOB_REQUEST','Composer project asset references are invalid',400)}
 }
@@ -59,6 +60,7 @@ export function createArtifactVideoInputResolver({db}={}){
       if(row.user_id!==userId||row.project_id!==projectId||row.status!=='approved'||row.approval_current!==true||!kind||!media||media.kind!==kind)fail('VIDEO_ASSET_NOT_SUITABLE','A referenced asset is not a currently approved media artifact')
       if(!MIME_BY_KIND[kind]?.has(media.mimeType)||typeof media.objectRef!=='string'||!OBJECT_REF_RE.test(media.objectRef)||media.objectRef.includes('..')||media.objectRef.includes('://')||media.objectRef.startsWith('/'))fail('VIDEO_ASSET_NOT_SUITABLE','A referenced asset has invalid storage metadata')
       if(!SHA256_RE.test(media.sha256||'')||row.output_checksum!==media.sha256||!SHA256_RE.test(row.content_checksum||''))fail('STALE_VIDEO_ASSET','A referenced asset checksum is stale')
+      if(kind==='font'&&refChecksum(input.project,row.id)!==media.sha256)fail('STALE_VIDEO_ASSET','A referenced font checksum is stale')
       if(row.checksum_version===CHECKSUM_V1&&contentDigest(row)!==row.content_checksum)fail('STALE_VIDEO_ASSET','A referenced artifact content changed after it was sealed')
       if(row.checksum_version!==CHECKSUM_V1&&row.checksum_version!==LEGACY_CHECKSUM_V1)fail('STALE_VIDEO_ASSET','A referenced artifact checksum version is unsupported')
       bindings[row.id]=Object.freeze({objectRef:media.objectRef,mimeType:media.mimeType,sha256:media.sha256})
@@ -67,3 +69,5 @@ export function createArtifactVideoInputResolver({db}={}){
     return Object.freeze({project:structuredClone(input.project),assetBindings:Object.freeze(bindings),genomeHints:Object.freeze({...input.genomeHints})})
   }
 }
+
+function refChecksum(project,assetId){return (project.fonts||[]).find(font=>font?.assetId===assetId)?.sha256}

@@ -10,6 +10,7 @@ const VIDEO_CREATE_FIELDS = new Set(['projectId', 'operation', 'project'])
 const TERMINAL = new Set(['succeeded', 'failed', 'cancelled'])
 const FINGERPRINT_JOB_REF = '00000000-0000-4000-8000-000000000000'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const MAX_INLINE_PREVIEW_BYTES = 64 * 1024 * 1024
 
 function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex')
@@ -502,7 +503,33 @@ export function createMediaJobService({ store, provider, providers, storage, res
     return normalizedId ? withJobLock(normalizedId, () => cancelUnlocked({ id: normalizedId, userId })) : null
   }
 
-  return Object.freeze({ create, getJob, refresh, cancel })
+  async function getPreview({ id, userId }) {
+    const normalizedId = normalizeJobId(id)
+    if (!normalizedId) return null
+    const job = await store.getOwned({ id: normalizedId, userId })
+    if (!job) return null
+    if (job.status !== 'succeeded' || !job.artifacts?.[0]) {
+      throw new MediaJobError('MEDIA_PREVIEW_NOT_READY', 'Media preview is not ready', { status: 409 })
+    }
+    const artifact = job.artifacts[0]
+    if (!Number.isSafeInteger(artifact.sizeBytes) || artifact.sizeBytes < 1 || artifact.sizeBytes > MAX_INLINE_PREVIEW_BYTES) {
+      throw new MediaJobError('MEDIA_PREVIEW_TOO_LARGE', 'Media preview exceeds the inline preview limit', { status: 413 })
+    }
+    const bytes = await storage.get(artifact.objectRef)
+    if (!Buffer.isBuffer(bytes) || bytes.length !== artifact.sizeBytes || sha256(bytes) !== artifact.sha256) {
+      throw new MediaJobError('RESULT_INVALID', 'Stored media preview failed integrity verification', { status: 502 })
+    }
+    return Object.freeze({ jobId: normalizedId, mimeType: artifact.mimeType, sizeBytes: bytes.length, sha256: artifact.sha256, inlineBase64: bytes.toString('base64') })
+  }
+
+  async function getStoredPreview({ artifactId, objectRef, mimeType, sizeBytes, sha256: expectedSha256 }) {
+    if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 1 || sizeBytes > MAX_INLINE_PREVIEW_BYTES) throw new MediaJobError('MEDIA_PREVIEW_TOO_LARGE', 'Media preview exceeds the inline preview limit', { status: 413 })
+    const bytes = await storage.get(objectRef)
+    if (!Buffer.isBuffer(bytes) || bytes.length !== sizeBytes || sha256(bytes) !== expectedSha256) throw new MediaJobError('RESULT_INVALID', 'Stored media preview failed integrity verification', { status: 502 })
+    return Object.freeze({ artifactId, mimeType, sizeBytes, sha256: expectedSha256, inlineBase64: bytes.toString('base64') })
+  }
+
+  return Object.freeze({ create, getJob, refresh, cancel, getPreview, getStoredPreview })
 }
 
 export { publicJob as toPublicMediaJob }

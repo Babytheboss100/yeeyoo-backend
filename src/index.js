@@ -53,12 +53,13 @@ import approvalRoutes from './routes/approvals.js'
 import activityRoutes from './routes/activity.js'
 import reportingRoutes from './routes/reporting.js'
 import aiUsageRoutes from './routes/ai-usage.js'
-import sosyRoutes from './routes/sosy.js'
+import { createSosyRouter } from './routes/sosy.js'
 import socialEngagementRoutes from './routes/social-engagement.js'
 import voiceAgentRoutes from './routes/voice-agent.js'
 import jobRoutes from './routes/jobs.js'
 import testSessionRoutes from './routes/test-session.js'
-import { createMediaJobsRouter } from './routes/media-jobs.js'
+import { createDefaultMediaJobService, createMediaJobsRouter } from './routes/media-jobs.js'
+import { createMediaInsightsRouter } from './routes/media-insights.js'
 import { auth } from './middleware/auth.js'
 import { corsOptions, generalLimiter, generateLimiter, aiLimiter, suspiciousActivityLogger } from './middleware/security.js'
 import { trimStrings } from './middleware/sanitize.js'
@@ -66,7 +67,10 @@ import { startVideoLeaseRunnerFromEnv } from './mediaEngine/jobs/videoLeaseBoots
 
 const app = express()
 const PORT = process.env.PORT || 3001
-const mediaJobRoutes = createMediaJobsRouter({ env: process.env, postgresPool: pool })
+const mediaJobService = createDefaultMediaJobService({ env: process.env, postgresPool: pool })
+const mediaJobRoutes = createMediaJobsRouter({ env: process.env, postgresPool: pool, service: mediaJobService })
+const mediaInsightsRoutes = createMediaInsightsRouter({ db: pool })
+const sosyRoutes = createSosyRouter({ db: pool, mediaJobService })
 let videoLeaseRunner = null
 
 // ─── Security middleware ─────────────────────────────────────────────────────
@@ -145,6 +149,7 @@ app.use('/api/social-engagement', socialEngagementRoutes)
 app.use('/api/voice', voiceAgentRoutes)
 app.use('/api/jobs', jobRoutes)
 app.use('/api/media/v1/jobs', mediaJobRoutes)
+app.use('/api/media/v1/insights', mediaInsightsRoutes)
 app.use('/api/content', contentRoutes)
 app.use('/api/billing', billingRoutes)
 app.use('/api/team', teamRoutes)

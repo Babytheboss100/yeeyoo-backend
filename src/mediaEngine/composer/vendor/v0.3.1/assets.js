@@ -4,12 +4,27 @@
 // materialisering fra durable storage. Composer ser aldri klientstier.
 
 import { loadImage, GlobalFonts } from '@napi-rs/canvas'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
+import { createHash } from 'node:crypto'
+
+const registeredFamilies = new Map()
 
 /** Registrer en font-fil (ttf/otf) under et familienavn. */
-export function registerFont(path, family) {
-  GlobalFonts.registerFromPath(path, family)
+export function registerFont(path, family, { expectedSha256 } = {}) {
+  if (!/^[a-f0-9]{64}$/.test(expectedSha256 || '')) throw new Error(`font checksum mangler: ${family}`)
+  const size = statSync(path).size
+  if (size < 1 || size > 20 * 1024 * 1024) throw new Error(`fontstørrelse er ugyldig: ${family}`)
+  const sha256 = createHash('sha256').update(readFileSync(path)).digest('hex')
+  if (sha256 !== expectedSha256) throw new Error(`font checksum mismatch: ${family}`)
+  const runtimeFamily = `${family}__${sha256.slice(0, 16)}`
+  const prior = registeredFamilies.get(runtimeFamily)
+  if (!prior) {
+    const ok = GlobalFonts.registerFromPath(path, runtimeFamily)
+    if (ok === false) throw new Error(`fontregistrering feilet: ${family}`)
+    registeredFamilies.set(runtimeFamily, sha256)
+  }
+  return Object.freeze({ family, runtimeFamily, sha256 })
 }
 
 /**
@@ -36,6 +51,7 @@ export function collectAssetRefs(project) {
       if (el.type === 'video') refs.push({ kind: 'video', ref: el, key: elKey(el) })
     }
   }
+  for (const font of project.fonts || []) refs.push({ kind: 'font', ref: font, key: fontKey(font) })
   if (project.audio?.music) refs.push({ kind: 'audio', ref: project.audio.music, key: 'audio:music' })
   if (project.audio?.voiceover) refs.push({ kind: 'audio', ref: project.audio.voiceover, key: 'audio:voiceover' })
   return refs
@@ -43,6 +59,26 @@ export function collectAssetRefs(project) {
 
 export const elKey = el => `el:${el.id}`
 export const bgKey = scene => `bg:${scene.id}`
+export const fontKey = font => `font:${font.family}`
+
+/** Registrer prosjektfonter etter at resolver og checksum har godkjent dem. */
+export function registerProjectFonts(project, resolved) {
+  return Object.freeze((project.fonts || []).map(font => registerFont(
+    resolved.get(fontKey(font)),
+    font.family,
+    { expectedSha256: font.sha256 },
+  )))
+}
+
+/** Bind logisk familienavn til en checksum-isolert runtime-familie. */
+export function applyRegisteredFonts(project, provenance) {
+  const aliases = new Map((provenance || []).map(item => [item.family, item.runtimeFamily]))
+  for (const scene of project.scenes || []) for (const element of scene.elements || []) {
+    if (element.type === 'text' && aliases.has(element.style?.fontFamily)) element.style.fontFamily = aliases.get(element.style.fontFamily)
+  }
+  for (const caption of project.captions || []) if (aliases.has(caption.style?.fontFamily)) caption.style.fontFamily = aliases.get(caption.style.fontFamily)
+  return project
+}
 
 /**
  * resolveAssets(project, assetMap) → Map<key, absPath>
