@@ -13,6 +13,7 @@ import {
   setSessionCookies,
 } from '../lib/session.js'
 import { consumeLoginOauthState, createLoginOauthState } from '../lib/loginOauthState.js'
+import { sendSafeError } from '../lib/safeError.js'
 
 const r = Router()
 
@@ -112,7 +113,7 @@ r.post('/verify-invite', async (req, res) => {
     if (rows[0].used) return res.status(400).json({ error: 'Koden er allerede brukt' })
     res.json({ valid: true, code: rows[0].code })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendSafeError(res, e, 'auth')
   }
 })
 
@@ -164,7 +165,7 @@ r.post('/register', validateRegister, async (req, res) => {
     })
   } catch (e) {
     if (e.code === '23505') return res.status(400).json({ error: 'E-post allerede i bruk' })
-    res.status(500).json({ error: e.message })
+    sendSafeError(res, e, 'auth')
   }
 })
 
@@ -195,7 +196,7 @@ r.post('/login', validateLogin, async (req, res) => {
     setSessionCookies(res, session)
     res.json({ user: { id: rows[0].id, name: rows[0].name, email: rows[0].email } })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendSafeError(res, e, 'auth')
   }
 })
 
@@ -240,7 +241,7 @@ r.patch('/me', auth, async (req, res) => {
     )
     res.json(rows[0])
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendSafeError(res, e, 'auth')
   }
 })
 
@@ -327,7 +328,7 @@ r.post('/resend-verification', async (req, res) => {
     sendVerificationEmail(email, rows[0].name, verifyToken, returnTo)
     res.json({ message: 'Verifiseringsmail sendt. Sjekk innboksen din.' })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendSafeError(res, e, 'auth')
   }
 })
 
@@ -569,7 +570,7 @@ r.post('/request-access', async (req, res) => {
 
     res.json({ message: 'Takk! Vi sender deg en invitasjon når plassen din er klar.' })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendSafeError(res, e, 'auth')
   }
 })
 
@@ -581,7 +582,7 @@ r.get('/whitelist', auth, requireAdmin, async (req, res) => {
     )
     res.json(rows)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendSafeError(res, e, 'auth')
   }
 })
 
@@ -598,7 +599,7 @@ r.post('/whitelist', auth, requireAdmin, async (req, res) => {
     )
     res.json(rows[0])
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendSafeError(res, e, 'auth')
   }
 })
 
@@ -607,7 +608,7 @@ r.delete('/whitelist/:id', auth, requireAdmin, async (req, res) => {
     await pool.query('DELETE FROM invite_whitelist WHERE id=$1', [req.params.id])
     res.json({ ok: true })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendSafeError(res, e, 'auth')
   }
 })
 

@@ -8,6 +8,7 @@ import { normalizeRequestedPlatforms, buildPlannerCalendarQuery } from '../marke
 import { getMarketingProfile } from '../marketing/profileStore.js'
 import { plannerContextFromProfile } from '../marketing/profile.js'
 import { safeCrawl } from '../services/safeCrawler.js'
+import { sendSafeError } from '../lib/safeError.js'
 
 const r = Router()
 r.use(auth)
@@ -239,7 +240,7 @@ Svar med denne eksakte JSON-strukturen:
   } catch (e) {
     console.error('Smartplan analyse FULL ERROR:', e.stack)
     console.error('Smartplan analyse error detail:', e.message, '| code:', e.code, '| column:', e.column, '| table:', e.table)
-    res.status(500).json({ error: e.message })
+    sendSafeError(res, e, 'smartplan')
   }
 })
 
@@ -444,7 +445,7 @@ Generer nøyaktig ${selectedDays.length} innlegg. Varier innhold, pilarer og pla
     res.json({ posts: savedPosts, total: savedPosts.length })
   } catch (e) {
     console.error('Smartplan generate-month error:', e.stack || e.message)
-    res.status(500).json({ error: e.message })
+    sendSafeError(res, e, 'smartplan')
   }
 })
 
@@ -463,7 +464,7 @@ r.get('/calendar', async (req, res) => {
     const { rows } = await pool.query(sql, params)
     res.json(rows)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendSafeError(res, e, 'smartplan')
   }
 })
 
@@ -483,7 +484,7 @@ r.patch('/posts/:id/schedule', async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'Innlegg ikke funnet' })
     res.json(rows[0])
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendSafeError(res, e, 'smartplan')
   }
 })
 
@@ -498,7 +499,7 @@ r.post('/posts/:id/approve', async (req, res) => {
     res.json({ post: rows[0] })
   } catch (e) {
     console.error('[smartplan/approve]', e.message)
-    res.status(500).json({ error: e.message })
+    sendSafeError(res, e, 'smartplan')
   }
 })
 
@@ -512,7 +513,7 @@ r.post('/posts/:id/reject', async (req, res) => {
     res.json({ post: rows[0] })
   } catch (e) {
     console.error('[smartplan/reject]', e.message)
-    res.status(500).json({ error: e.message })
+    sendSafeError(res, e, 'smartplan')
   }
 })
 
@@ -576,7 +577,7 @@ Svar med KUN den nye posten — ingen forklaring, ingen markdown-wrapper.`
     res.json({ post: rows[0] })
   } catch (e) {
     console.error('[smartplan/regenerate]', e.message)
-    res.status(500).json({ error: e.message })
+    sendSafeError(res, e, 'smartplan')
   }
 })
 
@@ -594,7 +595,7 @@ r.get('/businesses', async (req, res) => {
   } catch (e) {
     console.error('Smartplan businesses FULL ERROR:', e.stack)
     console.error('Smartplan businesses error detail:', e.message, '| code:', e.code, '| table:', e.table)
-    res.status(500).json({ error: e.message })
+    sendSafeError(res, e, 'smartplan')
   }
 })
 

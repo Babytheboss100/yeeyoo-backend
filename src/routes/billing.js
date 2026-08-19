@@ -2,6 +2,7 @@ import { Router } from 'express'
 import Stripe from 'stripe'
 import { pool } from '../db.js'
 import { auth } from '../middleware/auth.js'
+import { sendSafeError } from '../lib/safeError.js'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
 const r = Router()
@@ -64,7 +65,7 @@ r.get('/plan', auth, async (req, res) => {
     const plan = PLANS[sub.plan] || PLANS.free
     res.json({ subscription: sub, plan })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendSafeError(res, e, 'billing')
   }
 })
 
@@ -88,7 +89,7 @@ r.get('/usage', auth, async (req, res) => {
 
     res.json({ used, limit, remaining, canGenerate, plan: sub.plan })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendSafeError(res, e, 'billing')
   }
 })
 
@@ -154,7 +155,7 @@ r.post('/checkout', auth, async (req, res) => {
 
     res.json({ url: session.url })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendSafeError(res, e, 'billing')
   }
 })
 
@@ -170,7 +171,7 @@ r.post('/portal', auth, async (req, res) => {
     })
     res.json({ url: session.url })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendSafeError(res, e, 'billing')
   }
 })
 
@@ -182,7 +183,7 @@ r.post('/webhook', async (req, res) => {
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET)
   } catch (e) {
-    return res.status(400).json({ error: `Webhook feil: ${e.message}` })
+    return res.status(400).json({ error: 'Webhook verification failed' })
   }
 
   try {
@@ -242,7 +243,7 @@ r.post('/webhook', async (req, res) => {
     }
     res.json({ received: true })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendSafeError(res, e, 'billing')
   }
 })
 
