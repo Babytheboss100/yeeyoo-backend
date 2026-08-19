@@ -19,7 +19,7 @@ async function fixtureScope(pool) {
 
 test('PostgreSQL integration: two video runners claim exclusively, heartbeat fences reclaim, and expiry recovers', integration, async () => {
   const { Pool } = await import('pg')
-  const pool = new Pool({ connectionString: databaseUrl, max: 4 })
+  const pool = new Pool({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false }, max: 4, connectionTimeoutMillis: 10_000 })
   const id = crypto.randomUUID()
   try {
     const { userId, projectId } = await fixtureScope(pool)
@@ -51,7 +51,7 @@ test('PostgreSQL integration: two video runners claim exclusively, heartbeat fen
 
 test('PostgreSQL integration: resolveVideoInput returns only approved checksum-bound tenant artifacts', integration, async () => {
   const { Pool } = await import('pg')
-  const pool = new Pool({ connectionString: databaseUrl, max: 2 })
+  const pool = new Pool({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false }, max: 2, connectionTimeoutMillis: 10_000 })
   const artifactId = `media-it-${crypto.randomUUID()}`
   const decisionId = crypto.randomUUID()
   const rejectionId = crypto.randomUUID()
