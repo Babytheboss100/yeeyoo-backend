@@ -134,15 +134,15 @@ test('the Sosy run route hands the real provider to the artifact, the job and th
   // the wiring: no hardcoded provider may survive on the write path.
   const source = fs.readFileSync(new URL('../src/routes/sosy.js', import.meta.url), 'utf8')
   assert.match(source, /import \{ generateVariantCopy \} from '\.\.\/marketing\/contentGenerator\.js'/)
-  assert.match(source, /brand:await loadBrandContext\(\{userId:req\.user\.id,projectId\}\)/)
-  assert.match(source, /provider=generated\.provider;model=generated\.model;usage=generated\.usage/)
+  assert.match(source, /brand:\s*await loadBrandContextImpl\(\{\s*userId:\s*req\.user\.id,\s*projectId/)
+  assert.match(source, /provider\s*=\s*generated\.provider;\s*model\s*=\s*generated\.model;\s*usage\s*=\s*generated\.usage/)
   // saveArtifact, createJob and the succeeded transition all read the variables.
-  assert.match(source, /provenance:\{jobId:job\.id\},provider,model\}/)
-  assert.match(source, /kind:'marketing\.social',provider,model,/)
-  assert.match(source, /to:'succeeded',artifacts:\[\{id:artifact\.id,type:artifact\.type\}\],usage\}/)
+  assert.match(source, /provenance:\s*\{\s*jobId:\s*job\.id\s*\},\s*provider,\s*model\s*\}/)
+  assert.match(source, /kind:\s*'marketing\.social',\s*provider,\s*model,/)
+  assert.match(source, /to:\s*'succeeded',\s*artifacts:\s*\[\{\s*id:\s*artifact\.id,\s*type:\s*artifact\.type\s*\}\],\s*usage/)
   // The old lie: mock:true regardless of what produced the draft.
   assert.doesNotMatch(source, /mock:true/)
-  assert.match(source, /mock:provider==='deterministic-local'/)
+  assert.match(source, /mock:\s*provider\s*===\s*'deterministic-local'/)
   assert.doesNotMatch(source, /provider:'deterministic-local'/)
   assert.doesNotMatch(source, /model:'sosy-draft-v1'/)
 })
