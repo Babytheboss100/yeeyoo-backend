@@ -1,0 +1,12 @@
+# Fixed free/mock quality set. It is not sent anywhere automatically.
+version: 1
+categories:
+  product:
+    - { seed: 101, prompt: "SaaS dashboard on laptop, modern Nordic office, natural light" }
+    - { seed: 102, prompt: "Fintech app on smartphone, blurred cafe background" }
+  people:
+    - { seed: 201, prompt: "Entrepreneur at standing desk, Scandinavian office" }
+    - { seed: 202, prompt: "Two colleagues reviewing charts, Nordic business casual" }
+  backgrounds:
+    - { seed: 401, prompt: "Abstract navy to purple gradient, premium subtle grain" }
+    - { seed: 402, prompt: "Oslo waterfront at golden hour, cinematic" }

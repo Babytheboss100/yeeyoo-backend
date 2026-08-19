@@ -58,12 +58,14 @@ import socialEngagementRoutes from './routes/social-engagement.js'
 import voiceAgentRoutes from './routes/voice-agent.js'
 import jobRoutes from './routes/jobs.js'
 import testSessionRoutes from './routes/test-session.js'
+import { createMediaJobsRouter } from './routes/media-jobs.js'
 import { auth } from './middleware/auth.js'
 import { corsOptions, generalLimiter, generateLimiter, aiLimiter, suspiciousActivityLogger } from './middleware/security.js'
 import { trimStrings } from './middleware/sanitize.js'
 
 const app = express()
 const PORT = process.env.PORT || 3001
+const mediaJobRoutes = createMediaJobsRouter({ env: process.env, postgresPool: pool })
 
 // ─── Security middleware ─────────────────────────────────────────────────────
 app.use(helmet({
@@ -140,6 +142,7 @@ app.use('/api/sosy', sosyRoutes)
 app.use('/api/social-engagement', socialEngagementRoutes)
 app.use('/api/voice', voiceAgentRoutes)
 app.use('/api/jobs', jobRoutes)
+app.use('/api/media/v1/jobs', mediaJobRoutes)
 app.use('/api/content', contentRoutes)
 app.use('/api/billing', billingRoutes)
 app.use('/api/team', teamRoutes)

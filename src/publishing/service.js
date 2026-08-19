@@ -20,9 +20,13 @@ export async function publishPost({ userId, postId, projectId, campaignId, artif
   try {
     await client.query('BEGIN')
     const found = await client.query(`SELECT p.*, EXISTS(
-      SELECT 1 FROM marketing_approval_decisions d
+      SELECT 1 FROM marketing_approval_decisions d JOIN marketing_artifacts a
+        ON a.id=d.artifact_id AND a.user_id=d.user_id AND a.project_id=d.project_id
       WHERE d.user_id=p.user_id AND d.project_id=p.project_id AND d.campaign_id=p.campaign_id
-        AND d.artifact_id=p.artifact_id AND d.artifact_version=p.artifact_version AND d.decision='approved'
+        AND d.artifact_id=p.artifact_id AND d.artifact_version=p.artifact_version AND a.artifact_version=p.artifact_version
+        AND d.decision='approved' AND d.revoked_at IS NULL
+        AND d.checksum_version=a.checksum_version AND d.content_checksum=a.content_checksum
+        AND d.output_checksum IS NOT DISTINCT FROM a.output_checksum
     ) AS approval_current FROM posts p WHERE p.id=$1 AND p.user_id=$2 FOR UPDATE`, [postId, userId])
     const post = found.rows[0]
     if (!post) { await client.query('ROLLBACK'); return { status: 404, body: { error: 'Post not found' } } }
