@@ -157,7 +157,7 @@ function terminalPatch(status, now) {
   return { status, updatedAt: now, finishedAt: now, consecutiveControlPlaneErrors: 0, reconciliationState: 'active', nextReconcileAt: null }
 }
 
-export function createMediaJobService({ store, provider, providers, storage, resolveVideoInput, clock = () => new Date().toISOString(), idFactory = () => crypto.randomUUID(), maxControlPlaneErrors = 5, reconciliationBackoffMs = 1_000 } = {}) {
+export function createMediaJobService({ store, provider, providers, storage, resolveVideoInput, deferredOperations = [], clock = () => new Date().toISOString(), idFactory = () => crypto.randomUUID(), maxControlPlaneErrors = 5, reconciliationBackoffMs = 1_000 } = {}) {
   if (!store || typeof store.create !== 'function' || typeof store.getOwned !== 'function' || typeof store.compareAndSet !== 'function' || typeof store.attachProviderJobId !== 'function') throw new TypeError('Media job store is invalid')
   if (!Number.isSafeInteger(maxControlPlaneErrors) || maxControlPlaneErrors < 1 || maxControlPlaneErrors > 100) throw new TypeError('maxControlPlaneErrors is invalid')
   if (!Number.isSafeInteger(reconciliationBackoffMs) || reconciliationBackoffMs < 0 || reconciliationBackoffMs > 60_000) throw new TypeError('reconciliationBackoffMs is invalid')
@@ -171,6 +171,8 @@ export function createMediaJobService({ store, provider, providers, storage, res
   for (const [operation, adapter] of providerMap) {
     if (!adapter.capabilities()?.operations?.includes(operation)) throw new TypeError(`Provider does not support ${operation}`)
   }
+  const deferred = new Set(deferredOperations)
+  for (const operation of deferred) if (!providerMap.has(operation)) throw new TypeError(`Deferred provider does not support ${operation}`)
   const jobLocks = new Map()
 
   function providerFor(operation) {
@@ -441,6 +443,7 @@ export function createMediaJobService({ store, provider, providers, storage, res
     }
     const stored = await store.create(record)
     if (!stored.created) return { job: publicJob(stored.job), created: false }
+    if (deferred.has(normalized.operation)) return { job: publicJob(stored.job), created: true }
     try {
       const submitted = await selectedProvider.submit(workerRequest)
       const updated = await withJobLock(id, async () => {
@@ -470,6 +473,7 @@ export function createMediaJobService({ store, provider, providers, storage, res
     let snapshot = await store.getOwned({ id, userId })
     if (!snapshot) return null
     if (TERMINAL.has(snapshot.status)) return publicJob(snapshot)
+    if (deferred.has(snapshot.operation)) return publicJob(snapshot)
     if (!canReconcile(snapshot)) return publicJob(snapshot)
     if (!snapshot.providerJobId) snapshot = await reconcileSubmission(snapshot)
     if (!snapshot || TERMINAL.has(snapshot.status) || !snapshot.providerJobId) return publicJob(snapshot)
@@ -486,6 +490,7 @@ export function createMediaJobService({ store, provider, providers, storage, res
     let snapshot = await store.getOwned({ id, userId })
     if (!snapshot) return null
     if (TERMINAL.has(snapshot.status)) return publicJob(snapshot)
+    if (deferred.has(snapshot.operation)) return publicJob(await markCancelled(snapshot))
     snapshot = await markCancelRequested(snapshot)
     if (!snapshot.providerJobId) return publicJob(snapshot)
     if (!canReconcile(snapshot)) return publicJob(snapshot)

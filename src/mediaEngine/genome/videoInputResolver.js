@@ -41,7 +41,17 @@ export function createArtifactVideoInputResolver({db}={}){
     }
     if(byId.size===0)return Object.freeze({project:structuredClone(input.project),assetBindings:Object.freeze({}),genomeHints:Object.freeze({...input.genomeHints})})
     const ids=[...byId.keys()]
-    const {rows}=await db.query(`SELECT a.id,a.user_id,a.project_id,a.status,a.content,a.provenance,a.checksum_version,a.content_checksum,a.output_checksum,EXISTS(SELECT 1 FROM marketing_approval_decisions d WHERE d.user_id=a.user_id AND d.project_id=a.project_id AND d.artifact_id=a.id AND d.artifact_version=a.artifact_version AND d.decision='approved' AND d.revoked_at IS NULL AND d.checksum_version=a.checksum_version AND d.content_checksum=a.content_checksum AND d.output_checksum IS NOT DISTINCT FROM a.output_checksum) AS approval_current FROM marketing_artifacts a WHERE a.user_id=$1 AND a.project_id=$2 AND a.id=ANY($3::text[])`,[userId,projectId,ids])
+    const {rows}=await db.query(`SELECT a.id,a.user_id,a.project_id,a.status,a.content,a.provenance,a.checksum_version,a.content_checksum,a.output_checksum,
+      (latest.decision='approved' AND latest.checksum_version=a.checksum_version AND latest.content_checksum=a.content_checksum AND latest.output_checksum IS NOT DISTINCT FROM a.output_checksum) AS approval_current
+      FROM marketing_artifacts a
+      LEFT JOIN LATERAL (
+        SELECT d.decision,d.checksum_version,d.content_checksum,d.output_checksum
+        FROM marketing_approval_decisions d
+        WHERE d.user_id=a.user_id AND d.project_id=a.project_id AND d.artifact_id=a.id
+          AND d.artifact_version=a.artifact_version AND d.revoked_at IS NULL
+        ORDER BY d.decided_at DESC,d.id DESC LIMIT 1
+      ) latest ON TRUE
+      WHERE a.user_id=$1 AND a.project_id=$2 AND a.id=ANY($3::text[])`,[userId,projectId,ids])
     if(rows.length!==ids.length)fail()
     const bindings=Object.create(null)
     for(const row of rows){

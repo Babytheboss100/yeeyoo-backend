@@ -52,7 +52,15 @@ test('PostgreSQL mode fails closed before process-local video submission', () =>
     env: { MEDIA_JOB_STORE: 'memory' },
     input: { operation: 'video.render' },
   }))
+  assert.doesNotThrow(() => assertDefaultVideoExecutionAvailable({
+    env: { MEDIA_JOB_STORE: 'postgres', MEDIA_VIDEO_LEASE_RUNNER_ENABLED: 'true' },
+    input: { operation: 'video.render' },
+  }))
+  assert.doesNotThrow(() => assertDefaultVideoExecutionAvailable({
+    env: { MEDIA_JOB_STORE: 'postgres', MEDIA_VIDEO_RUNNER_MODE: 'standalone' },
+    input: { operation: 'video.render' },
+  }))
 
-  assert.match(route, /if \(env\.MEDIA_JOB_STORE !== 'postgres'\) \{\s*providers\[VIDEO_RENDER_OPERATION\] = createComposerVideoProvider/)
+  assert.match(route, /deferredOperations: env\.MEDIA_JOB_STORE === 'postgres' \? \[VIDEO_RENDER_OPERATION\] : \[\]/)
   assert.match(route, /assertDefaultVideoExecutionAvailable\(\{ env, input: req\.body \}\)/)
 })

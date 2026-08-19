@@ -31,17 +31,14 @@ function defaultService(env, postgresPool) {
   const storage = createLocalDiskStorageAdapter({ rootPath })
   const providers = {
     [IMAGE_OPERATION]: createFakeImageProvider(),
-  }
-  // Composer execution is intentionally process-local. A PostgreSQL JobStore
-  // does not make its status/cancellation state durable or cross-instance safe.
-  if (env.MEDIA_JOB_STORE !== 'postgres') {
-    providers[VIDEO_RENDER_OPERATION] = createComposerVideoProvider({ storage })
+    [VIDEO_RENDER_OPERATION]: createComposerVideoProvider({ storage }),
   }
   return createMediaJobService({
     store: createDefaultMediaJobStore({ env, postgresPool }),
     providers,
     storage,
     resolveVideoInput: createArtifactVideoInputResolver({ db: postgresPool }),
+    deferredOperations: env.MEDIA_JOB_STORE === 'postgres' ? [VIDEO_RENDER_OPERATION] : [],
   })
 }
 

@@ -62,10 +62,12 @@ import { createMediaJobsRouter } from './routes/media-jobs.js'
 import { auth } from './middleware/auth.js'
 import { corsOptions, generalLimiter, generateLimiter, aiLimiter, suspiciousActivityLogger } from './middleware/security.js'
 import { trimStrings } from './middleware/sanitize.js'
+import { startVideoLeaseRunnerFromEnv } from './mediaEngine/jobs/videoLeaseBootstrap.js'
 
 const app = express()
 const PORT = process.env.PORT || 3001
 const mediaJobRoutes = createMediaJobsRouter({ env: process.env, postgresPool: pool })
+let videoLeaseRunner = null
 
 // ─── Security middleware ─────────────────────────────────────────────────────
 app.use(helmet({
@@ -300,6 +302,7 @@ async function start() {
   try {
     console.log('Starting DB init...')
     await initDB()
+    videoLeaseRunner = await startVideoLeaseRunnerFromEnv({ env: process.env, db: pool, runtimeMode: 'embedded' })
     console.log('DB init complete, starting server...')
     app.listen(PORT, () => console.log(`🚀 Yeeyoo backend v6.0 kjører på port ${PORT}`))
 
@@ -323,8 +326,8 @@ async function start() {
 start()
 
 const shutdown=createGracefulShutdown({pool,exit:(code)=>{process.exitCode=code}})
-process.once('SIGTERM',()=>shutdown('SIGTERM'))
-process.once('SIGINT',()=>shutdown('SIGINT'))
+process.once('SIGTERM',async()=>{await videoLeaseRunner?.stop();await shutdown('SIGTERM')})
+process.once('SIGINT',async()=>{await videoLeaseRunner?.stop();await shutdown('SIGINT')})
 
 // Catch unhandled errors at module level
 process.on('uncaughtException', (e) => {

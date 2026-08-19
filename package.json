@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
+    "media:video-runner": "node src/mediaEngine/runner.js",
     "test": "node --test test/*.test.js",
     "db:migrate": "node scripts/migrate.js",
     "db:seed:test": "node scripts/seed-test.js"
